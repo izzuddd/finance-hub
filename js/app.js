@@ -4,6 +4,7 @@ import * as M from './model.js';
 import * as sync from './sync.js';
 import { setCycleStartDay, cycleLabel, currentCycle, fmtIDR } from './util.js';
 import { $, toast, closeModal } from './ui.js';
+import { CONFIG } from './config.js';
 import * as add from './pages/add.js';
 import * as budget from './pages/budget.js';
 import * as saving from './pages/saving.js';
@@ -50,6 +51,7 @@ async function boot() {
   new MutationObserver(() => { if (!document.querySelector('#overlay.show')) repaint(); }).observe($('overlay'), { attributes: true, attributeFilter: ['class'] });
   db.onChange(repaint);
   sync.setSummaryBuilder(M.summaryTable);
+  $('syncBar').onclick = () => $('syncDot').click();
   $('syncDot').onclick = () => {
     if (!sync.isConnected()) return show('settings');
     sync.syncNow({ interactive: true }).then(() => toast('Tersinkron ✓')).catch((e) => toast(e.message, 4000));
@@ -57,6 +59,11 @@ async function boot() {
   sync.onStatus((s) => {
     const d = $('syncDot');
     d.className = 'dot ' + s.state; d.title = s.msg;
+    // iPhone has no hover tooltips: show what sync is doing right under the header
+    const bar = $('syncBar');
+    const vis = ['syncing', 'error', 'auth'].includes(s.state);
+    bar.className = vis ? 'show ' + s.state : '';
+    bar.textContent = vis ? (s.state === 'syncing' ? '⟳ ' : s.state === 'error' ? '⚠ ' : '🔑 ') + s.msg + '  · v' + CONFIG.APP_VERSION : '';
     if (S.page === 'settings') repaint();
   });
   sync.startAutoSync();
@@ -70,7 +77,11 @@ async function boot() {
   const first = !db.all('transactions').length && !db.all('accounts').length;
   show(first ? 'settings' : (localStorage.getItem('hub.page') || 'add'));
   if (first) toast('Selamat datang! Impor data lama atau hubungkan Google Sheets di sini.', 5000);
-  if (sync.isConnected()) sync.syncNow().catch(() => {});
+  // back from a Google login by redirect (home-screen app): finish what the user started
+  const back = sync.handleRedirect();
+  if (back?.error) toast(back.error, 5000);
+  else if (back?.after === 'connect') sync.connect().then(() => toast('Terhubung & tersinkron ✓')).catch((e) => toast(e.message, 5000));
+  else if (sync.isConnected()) sync.syncNow({ interactive: !!back }).then(() => back && toast('Tersinkron ✓')).catch(() => {});
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="card">Gagal memuat: ${e.message}</div>`); console.error(e); });

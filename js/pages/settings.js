@@ -16,7 +16,8 @@ export function render(el, S) {
       <button class="btn small ghost" id="disc">Putuskan perangkat ini</button>`
       : `<button class="btn" id="conn">Hubungkan Google Sheets</button>`}
     <label>Google OAuth Client ID</label><input id="cid" value="${esc(sync.clientId())}" placeholder="xxxx.apps.googleusercontent.com">
-    <div class="note">Lihat SETUP.md langkah 2. Disimpan di perangkat ini saja${CONFIG.GOOGLE_CLIENT_ID ? ' (default dari config.js sudah terisi)' : ''}. Data selalu tersimpan di perangkat dulu — app tetap jalan offline, lalu sinkron otomatis.</div>`);
+    <div class="note">Lihat SETUP.md langkah 2. Disimpan di perangkat ini saja${CONFIG.GOOGLE_CLIENT_ID ? ' (default dari config.js sudah terisi)' : ''}. Data selalu tersimpan di perangkat dulu — app tetap jalan offline, lalu sinkron otomatis.</div>
+    <div class="note">Untuk app di layar utama HP (iPhone), login Google memakai <i>redirect</i>. Daftarkan alamat ini di Google Cloud → Client ID → <b>Authorized redirect URIs</b>: <code style="user-select:all">${esc(sync.redirectUri())}</code></div>`);
   h += card('Cadangan & impor', `<div class="flex2"><button class="btn small ghost" id="exp">⬇ Ekspor cadangan (JSON)</button><label class="btn small ghost filebtn">⬆ Impor JSON<input type="file" id="imp" accept=".json,application/json"></label></div>
     <div class="note">Impor = pindahan dari spreadsheet lama (file dari tools/migrate_to_hub.py) atau cadangan. Isi di perangkat ini diganti, lalu dikirim ke Google Sheets kalau terhubung.</div>`);
   h += card('Akun / rekening', M.accounts().map((a) => row(esc(a.name), `${a.currency} · ${esc(a.kind)}${a.usable === 0 ? ' · tabungan' : ''}`, `<button class="edit-ico" data-acc="${a.id}">✎</button>`)).join('') + '<button class="btn small ghost" id="addAcc">+ akun</button>');

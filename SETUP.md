@@ -30,6 +30,7 @@ HP / laptop (app + data lokal)  ⇄  Google Sheets API  ⇄  1 spreadsheet: satu
 4. **Credentials → Create credentials → OAuth client ID**:
    - Application type: **Web application**.
    - Authorized JavaScript origins: `https://<username>.github.io`. Tambahkan juga `http://localhost:8124` kalau mau mencoba lokal.
+   - Authorized redirect URIs: `https://<username>.github.io/finance-hub/` (persis, dengan `/` di akhir). Ini dibutuhkan app di layar utama iPhone, yang login lewat redirect. Alamat persisnya ada di app: ⚙︎ Pengaturan → Google Sheets.
    - Salin **Client ID** (`xxxx.apps.googleusercontent.com`).
 5. Tempel Client ID di salah satu tempat ini:
    - `js/config.js` → `GOOGLE_CLIENT_ID: '…'`, lalu upload ulang file itu ke GitHub, **atau**

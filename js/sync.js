@@ -10,6 +10,39 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const HUB_TITLE = 'Izud Finance Hub';
 let token = null, tokenExp = 0, tokenClient = null;
+// The 1-hour access token is kept on this device so reopening the app (iOS kills home-screen apps
+// in the background) doesn't force a new Google login every time.
+try { const s = JSON.parse(localStorage.getItem('hub.tok') || 'null'); if (s && s.exp > Date.now()) { token = s.t; tokenExp = s.exp; } } catch { /* ignore */ }
+function saveToken(t, expiresIn) {
+  token = t; tokenExp = Date.now() + (Number(expiresIn) || 3600) * 1000;
+  try { localStorage.setItem('hub.tok', JSON.stringify({ t: token, exp: tokenExp })); } catch { /* ignore */ }
+}
+function dropToken() { token = null; tokenExp = 0; try { localStorage.removeItem('hub.tok'); } catch { /* ignore */ } }
+// Installed as a home-screen app (iOS especially), Google's login popup opens in a separate sheet
+// that often never reports back — the app then waits forever. There we log in by redirect instead:
+// the app navigates to Google and Google sends the token back to this same page.
+const useRedirect = () => navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
+export const redirectUri = () => location.origin + location.pathname.replace(/index\.html$/, '');
+function loginByRedirect(after) {
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  localStorage.setItem('hub.oauth', JSON.stringify({ state, after }));
+  const p = new URLSearchParams({ client_id: clientId(), redirect_uri: redirectUri(), response_type: 'token', scope: SCOPE,
+    include_granted_scopes: 'true', state });
+  location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + p);
+  return new Promise(() => {}); // the page is leaving
+}
+// Called once at boot: picks up the token Google put in the URL (#access_token=…) after a redirect login.
+export function handleRedirect() {
+  if (!/access_token=|error=/.test(location.hash)) return null;
+  const h = new URLSearchParams(location.hash.slice(1));
+  let saved = null; try { saved = JSON.parse(localStorage.getItem('hub.oauth') || 'null'); } catch { /* ignore */ }
+  localStorage.removeItem('hub.oauth');
+  history.replaceState(null, '', location.pathname + location.search);
+  if (!saved || h.get('state') !== saved.state) return { error: 'Login Google tidak valid, coba lagi' };
+  if (h.get('error')) return { error: 'Login Google gagal: ' + h.get('error') };
+  saveToken(h.get('access_token'), h.get('expires_in'));
+  return { after: saved.after };
+}
 let status = { state: 'local', msg: 'Belum terhubung ke Google Sheets', last: 0 };
 const statusListeners = new Set();
 export const onStatus = (fn) => { statusListeners.add(fn); fn(status); };
@@ -32,11 +65,12 @@ function loadGis() {
   });
 }
 const hasToken = () => token && Date.now() < tokenExp - 60000;
-async function getToken(interactive) {
+async function getToken(interactive, after = 'sync') {
   if (hasToken()) return token;
   // background syncs must not open a login popup (browsers block popups without a tap)
   if (!interactive) { const e = new Error('Sesi Google habis — ketuk titik status untuk login & sinkron'); e.auth = true; throw e; }
   if (!clientId()) throw new Error('Google Client ID belum diisi (Pengaturan → Google Sheets)');
+  if (useRedirect()) return loginByRedirect(after);
   await loadGis();
   return new Promise((res, rej) => {
     tokenClient = google.accounts.oauth2.initTokenClient({
@@ -44,12 +78,14 @@ async function getToken(interactive) {
       hint: localStorage.getItem('hub.email') || undefined,
       callback: (r) => {
         if (r.error) return rej(new Error(r.error_description || r.error));
-        token = r.access_token; tokenExp = Date.now() + (Number(r.expires_in) || 3600) * 1000;
+        saveToken(r.access_token, r.expires_in);
         res(token);
       },
       error_callback: (e) => rej(new Error(e?.message || e?.type || 'login dibatalkan')),
     });
     tokenClient.requestAccessToken({ prompt: interactive && !db.getMeta().consented ? 'consent' : '' });
+    // if the login window never reports back, don't leave the app "syncing" forever
+    setTimeout(() => rej(Object.assign(new Error('Login Google tidak kembali ke app — ketuk untuk coba lagi'), { auth: true })), 120000);
   });
 }
 async function api(method, url, body, interactive) {
@@ -66,7 +102,7 @@ async function api(method, url, body, interactive) {
   } catch (e) {
     throw new Error(e.name === 'AbortError' ? 'Koneksi ke Google terlalu lama (timeout) — coba lagi' : 'Gagal menghubungi Google: ' + e.message);
   } finally { clearTimeout(timer); }
-  if (r.status === 401) { token = null; const e = new Error('Sesi Google berakhir — ketuk titik status untuk login lagi'); e.auth = true; throw e; }
+  if (r.status === 401) { dropToken(); const e = new Error('Sesi Google berakhir — ketuk titik status untuk login lagi'); e.auth = true; throw e; }
   if (!r.ok) throw new Error('Google API ' + r.status + ': ' + (await r.text()).slice(0, 200));
   return r.json();
 }
@@ -82,7 +118,7 @@ export async function connect() {
   }
 }
 async function connectInner() {
-  await getToken(true);
+  await getToken(true, 'connect');
   const meta = db.getMeta();
   meta.consented = true;
   if (!meta.spreadsheetId) {
@@ -120,7 +156,7 @@ export async function disconnect() {
   delete meta.spreadsheetId; delete meta.rows; delete meta.headers;
   await db.saveMeta();
   if (token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(token, () => {});
-  token = null;
+  dropToken();
   setStatus('local', 'Terputus — data tetap ada di perangkat ini');
 }
 async function writeHeaders(tables) {
