@@ -35,18 +35,35 @@ HP / laptop (app + data lokal)  ⇄  Google Sheets API  ⇄  1 spreadsheet: satu
    - `js/config.js` → `GOOGLE_CLIENT_ID: '…'`, lalu upload ulang file itu ke GitHub, **atau**
    - langsung di app: **⚙︎ Pengaturan → Google OAuth Client ID** (tersimpan per perangkat).
 
-## 3. Pindahkan data lama
+## 3. Pindahkan data lama (dilakukan DI DALAM APP, bukan di GitHub / Google Cloud)
 
-1. File `migration/hub-import-2026-09-27.json` sudah dibuat dari spreadsheet per 27 Sep 2026.
-   - Isinya: 1.066 transaksi, budget Jan–Des, tabungan, talangan, pinjaman, emas, tanah, trip, dan RAB kamar + rencana s/d 2029.
-   - Untuk data yang lebih baru, unduh lagi ketiga spreadsheet sebagai .xlsx lalu jalankan:
-     ```
-     python tools/migrate_to_hub.py diary.xlsx budget.xlsx holiday.xlsx migration/hub-import.json <folder RAB>
-     ```
-2. Buka app → **⚙︎ Pengaturan → ⬆ Impor JSON** → pilih file tadi.
-   - Kirim filenya ke HP lewat Google Drive/WhatsApp ke diri sendiri, atau impor di laptop saja.
-3. **Hubungkan Google Sheets** → login → app membuat spreadsheet "Izud Finance Hub" dan mengirim semua data (±30 detik untuk pertama kali).
-4. Di HP kedua: buka app → Pengaturan → isi Client ID → **Hubungkan**. App menemukan spreadsheet yang sama dan menarik datanya. Tidak perlu impor lagi.
+Tiga tempat, tiga tugas:
+
+| Tempat | Untuk apa | Kapan dibuka |
+|---|---|---|
+| github.com | menyimpan file kode app | sekali (dan saat update) |
+| console.cloud.google.com | membuat Client ID (izin ke Google Sheets) | sekali |
+| **`https://<username>.github.io/finance-hub/`** | **app-nya: dipakai sehari-hari, tempat import** | setiap hari |
+
+Langkah import (cukup sekali, di laptop):
+
+1. File import sudah ada di laptop: `BUDGETING_SPREADSHEETS\migration\hub-import-2026-09-27.json`. **Jangan upload ke GitHub.**
+2. Buka **alamat app** `https://<username>.github.io/finance-hub/` di Chrome. App yang masih kosong langsung membuka **Pengaturan** (atau ketuk **⚙︎** kanan atas).
+3. Di kartu **"Cadangan & impor"** klik **⬆ Impor JSON**, lalu pilih file dari langkah 1. Tunggu sampai muncul "Impor selesai ✓".
+4. Masih di Pengaturan:
+   - tempel **Client ID** (dari langkah 2) di kolom *Google OAuth Client ID*
+   - klik **Hubungkan Google Sheets** dan login
+   - app membuat spreadsheet "Izud Finance Hub" di Drive-mu dan mengirim semua data (±30 detik)
+5. **Di HP:** buka alamat app yang sama → ⚙︎ Pengaturan → tempel Client ID → **Hubungkan Google Sheets**. Data ditarik otomatis; **tidak perlu import lagi.**
+
+Untuk data yang lebih baru dari 27 Sep 2026:
+
+1. Unduh ketiga spreadsheet sebagai .xlsx.
+2. Jalankan:
+   ```
+   python tools/migrate_to_hub.py diary.xlsx budget.xlsx holiday.xlsx migration/hub-import.json <folder RAB>
+   ```
+3. Import ulang file hasilnya (langkah 3).
 
 ## 4. Pasang di HP
 

@@ -74,7 +74,7 @@ export async function connect() {
     const found = await findExisting();
     if (found) { meta.spreadsheetId = found; meta.rows = {}; await db.saveMeta(); await syncNow({ interactive: true }); return found; }
     const created = await api('POST', API, {
-      properties: { title: HUB_TITLE, timeZone: 'Europe/Istanbul', locale: 'id_ID' },
+      properties: { title: HUB_TITLE, timeZone: 'Europe/Istanbul' },
       sheets: [{ properties: { title: 'README' } }, { properties: { title: 'RINGKASAN' } },
         ...db.TABLES.map((t) => ({ properties: { title: t, gridProperties: { frozenRowCount: 1 } } }))],
     });
