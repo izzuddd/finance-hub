@@ -21,7 +21,9 @@ export function render(el, S) {
     <div class="note">Untuk app di layar utama HP (iPhone), login Google memakai <i>redirect</i>. Daftarkan alamat ini di Google Cloud → Client ID → <b>Authorized redirect URIs</b>: <code style="user-select:all">${esc(sync.redirectUri())}</code></div>`);
   const B = sync.bridge();
   h += card('Sinkron tanpa login (disarankan untuk iPhone)', B ? `
-    <div class="note">Aktif — sinkron lewat Apps Script di spreadsheet-mu. Tidak perlu login Google, tidak ada sesi 1 jam.</div>
+    <div class="note">Aktif — perangkat tepercaya, tidak perlu login Google. ${sync.bridgeMode() === 'direct'
+      ? 'Mode cepat: data langsung ke Google Sheets API.'
+      : 'Mode lambat (lewat skrip, ±2-4 dtk). Untuk mode cepat: perbarui skrip ke versi terbaru + Services → tambah Google Sheets API, deploy New version, lalu Matikan & Aktifkan lagi di sini.'}</div>
     <button class="btn small ghost" id="brOff">Matikan (kembali ke login Google)</button>` : `
     <div class="note">Login Google di app layar utama iPhone sering tidak kembali ke app dan sesinya habis tiap 1 jam. Dengan Apps Script kecil di spreadsheet-mu, sinkron jalan terus tanpa login. Cara pasang: SETUP.md → "Sinkron tanpa login".</div>
     <label>URL Web app Apps Script (…/exec)</label><input id="brUrl" placeholder="https://script.google.com/macros/s/…/exec">

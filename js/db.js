@@ -99,6 +99,7 @@ export const getMeta = () => meta;
 // ---------------- reads ----------------
 export const all = (t) => [...mem[t].values()].filter((r) => !r._d);
 export const allRaw = (t) => [...mem[t].values()];
+export const getRaw = (t, id) => mem[t].get(id) || null;
 export const get = (t, id) => { const r = mem[t].get(id); return r && !r._d ? r : null; };
 export const where = (t, f) => all(t).filter(f);
 export function setting(key, def) {

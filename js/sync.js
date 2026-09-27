@@ -127,18 +127,42 @@ export async function enableBridge(url, key) {
   setStatus('syncing', 'Menghubungi Apps Script…');
   let info;
   try { info = await callBridge({ op: 'info' }, { url, key }); } catch (e) { setStatus('error', e.message); throw e; }
-  localStorage.setItem('hub.bridge', JSON.stringify({ url, key }));
+  localStorage.setItem('hub.bridge', JSON.stringify({ url, key, direct: true }));
+  dropToken();
   const meta = db.getMeta();
   if (meta.spreadsheetId !== info.id) { meta.rows = {}; meta.headers = {}; meta.adopt = true; }
   meta.spreadsheetId = info.id;
   await db.saveMeta();
   return syncNow({ interactive: true });
 }
-export async function disableBridge() { localStorage.removeItem('hub.bridge'); }
+export async function disableBridge() { localStorage.removeItem('hub.bridge'); dropToken(); }
+export const bridgeMode = () => (!viaBridge() ? '' : bridgeDirect() ? 'direct' : 'script');
 
-async function api(method, url, body, interactive) {
-  if (viaBridge()) return bridgeApi(method, url, body);
-  const t = await getToken(interactive || interactiveFlag);
+// "Perangkat tepercaya": the bridge hands out the script owner's short-lived Google access token
+// (ScriptApp.getOAuthToken), fetched in the background about once an hour. The app then talks to the
+// Sheets API directly — as fast as the Google-login mode, but never asks to log in again.
+// If the direct route isn't possible (old script / Sheets API off), it falls back to bridge-only sync.
+const bridgeDirect = () => viaBridge() && bridge().direct !== false;
+function setBridgeDirect(on) { const b = bridge(); if (b) { b.direct = on; localStorage.setItem('hub.bridge', JSON.stringify(b)); } }
+async function bridgeToken() {
+  if (hasToken()) return token;
+  const r = await callBridge({ op: 'token' });
+  if (!r.token) throw Object.assign(new Error('no token'), { noDirect: true });
+  saveToken(r.token, 40 * 60); // the script's token may be partly used already; refresh early
+  return token;
+}
+
+async function api(method, url, body, interactive, retried) {
+  if (viaBridge()) {
+    if (/googleapis\.com\/drive\//.test(url)) return {}; // Drive tagging/search: not needed in this mode
+    if (!bridgeDirect()) return bridgeApi(method, url, body);
+    try { await bridgeToken(); } catch (e) {
+      if (!e.noDirect && !/op tidak dikenal/.test(e.message)) throw e;
+      setBridgeDirect(false); // script without the 'token' op: keep syncing through the script
+      return bridgeApi(method, url, body);
+    }
+  }
+  const t = viaBridge() ? token : await getToken(interactive || interactiveFlag);
   // never hang forever on a stalled connection: give up after 45 s (next sync retries)
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 45000);
@@ -151,8 +175,19 @@ async function api(method, url, body, interactive) {
   } catch (e) {
     throw new Error(e.name === 'AbortError' ? 'Koneksi ke Google terlalu lama (timeout) — coba lagi' : 'Gagal menghubungi Google: ' + e.message);
   } finally { clearTimeout(timer); }
-  if (r.status === 401) { dropToken(); const e = new Error('Sesi Google berakhir — ketuk titik status untuk login lagi'); e.auth = true; throw e; }
-  if (!r.ok) throw new Error('Google API ' + r.status + ': ' + (await r.text()).slice(0, 200));
+  if (r.status === 401) {
+    dropToken();
+    if (viaBridge() && !retried) return api(method, url, body, interactive, true); // expired early: fetch a fresh one
+    const e = new Error('Sesi Google berakhir — ketuk titik status untuk login lagi'); e.auth = true; throw e;
+  }
+  if (!r.ok) {
+    const text = await r.text();
+    if (viaBridge() && r.status === 403 && /has not been used|is disabled|SERVICE_DISABLED|insufficient/i.test(text)) {
+      setBridgeDirect(false);
+      return bridgeApi(method, url, body);
+    }
+    throw new Error('Google API ' + r.status + ': ' + text.slice(0, 200));
+  }
   return r.json();
 }
 const q = (s) => "'" + s.replace(/'/g, "''") + "'";
@@ -268,11 +303,20 @@ export function syncNow({ interactive = false } = {}) {
         if (!interactive && !hasToken()) { setStatus('auth', 'Ketuk titik status untuk login Google & sinkron (' + db.dirtyCount() + ' perubahan menunggu)'); return; }
         if (interactive) await getToken(true);
       }
-      setStatus('syncing', 'Sinkron: menarik data dari Google Sheet…');
-      await pull();
-      await push();
-      setStatus('syncing', 'Sinkron: menulis RINGKASAN…');
-      await writeSummary();
+      let fast = false;
+      if (canFastSync()) {
+        try { await fastSync(); fast = true; } catch (e) {
+          if (!/Unable to parse range/.test(e.message)) throw e;
+          db.getMeta().headers = {}; // a tab was renamed/removed in the sheet: rebuild via the full path
+        }
+      }
+      if (!fast) {
+        setStatus('syncing', 'Sinkron: menarik data dari Google Sheet…');
+        await pull();
+        await push();
+        setStatus('syncing', 'Sinkron: menulis RINGKASAN…');
+        await writeSummary();
+      }
       db.getMeta().lastSync = Date.now();
       await db.saveMeta();
       setStatus('ok', 'Tersinkron');
@@ -299,10 +343,27 @@ async function pull() {
     if (/Unable to parse range/.test(e.message)) { await ensureTabs(); return pull(); }
     throw e;
   }
+  const needHeader = applyValueRanges(res.valueRanges);
+  if (needHeader.length) await writeHeadersMerged(needHeader);
+  if (meta.adopt) { // first sync with a sheet: send rows the sheet doesn't have yet
+    for (const t of db.TABLES) {
+      const missing = db.allRaw(t).map((r) => r.id).filter((id) => !meta.rows[t][id]);
+      if (missing.length) db.markDirty(t, missing);
+    }
+    delete meta.adopt;
+  }
+  await db.saveMeta();
+}
+// Apply pulled tabs (in db.TABLES order) to the local store; returns tables whose header row needs fixing.
+function applyValueRanges(valueRanges) {
+  const meta = db.getMeta();
+  meta.digest = meta.digest || {};
   let changed = false;
   const needHeader = [];
-  res.valueRanges.forEach((vr, i) => {
+  valueRanges.forEach((vr, i) => {
     const t = db.TABLES[i];
+    if (vr.digest) meta.digest[t] = vr.digest;
+    if (vr.same) return; // unchanged since last sync
     const values = vr.values || [];
     const header = values[0] || [];
     const want = db.SCHEMA[t].concat(db.META_COLS);
@@ -324,16 +385,46 @@ async function pull() {
     }
     meta.rows[t] = rows;
   });
-  if (needHeader.length) await writeHeadersMerged(needHeader);
-  if (meta.adopt) { // first sync with a sheet: send rows the sheet doesn't have yet
-    for (const t of db.TABLES) {
-      const missing = db.allRaw(t).map((r) => r.id).filter((id) => !meta.rows[t][id]);
-      if (missing.length) db.markDirty(t, missing);
-    }
-    delete meta.adopt;
-  }
-  await db.saveMeta();
   if (changed) db.emitAll();
+  return needHeader;
+}
+
+// Apps Script mode: the whole sync (send changes + RINGKASAN + receive changed tabs) in ONE request,
+// instead of 3+ sequential requests that each pay Apps Script's ~1-2 s overhead.
+const canFastSync = () => {
+  const meta = db.getMeta();
+  return viaBridge() && !bridgeDirect() && !meta.adopt && db.TABLES.every((t) => meta.headers?.[t] && meta.rows?.[t]);
+};
+async function fastSync() {
+  const meta = db.getMeta();
+  const writes = [], appends = [], sent = [];
+  for (const t of db.TABLES) {
+    const rows = db.dirtyRows(t);
+    if (!rows.length) continue;
+    const header = meta.headers[t];
+    const fresh = [];
+    rows.forEach((r) => {
+      sent.push([t, r.id, r._u]);
+      const n = meta.rows[t][r.id];
+      if (n) writes.push({ range: `${q(t)}!A${n}:${colLetter(header.length - 1)}${n}`, values: [toLine(t, r)] });
+      else fresh.push(r);
+    });
+    if (fresh.length) appends.push({ t, fresh, range: `${q(t)}!A1`, values: fresh.map((r) => toLine(t, r)) });
+  }
+  const summary = summaryFn ? summaryFn() : null;
+  if (summary && summary.length) writes.push({ range: `${q('RINGKASAN')}!A1`, values: summary });
+  if (sent.length) setStatus('syncing', `Sinkron: mengirim ${sent.length} perubahan…`);
+  const res = await callBridge({ op: 'sync', writes, appends: appends.map(({ range, values }) => ({ range, values })),
+    ranges: db.TABLES.map((t) => `${q(t)}!A1:AZ`), digests: db.TABLES.map((t) => meta.digest?.[t] || '') });
+  appends.forEach((a, k) => {
+    const m = /![A-Z]+(\d+)/.exec(res.appended[k] || '');
+    if (m) a.fresh.forEach((r, j) => { meta.rows[a.t][r.id] = Number(m[1]) + j; });
+  });
+  // rows edited again while the request was in flight stay dirty (they go out next time)
+  sent.forEach(([t, id, u]) => { if (db.getRaw(t, id)?._u === u) db.clearDirty(t, [id]); });
+  const needHeader = applyValueRanges(res.valueRanges);
+  if (needHeader.length) await writeHeadersMerged(needHeader);
+  await db.saveMeta();
 }
 async function ensureTabs() {
   const info = await api('GET', `${API}/${spreadsheetId()}?fields=sheets.properties.title`);
@@ -434,7 +525,7 @@ export function startAutoSync() {
   db.onChange(() => {
     if (!isConnected()) return;
     clearTimeout(editTimer);
-    editTimer = setTimeout(() => syncNow().catch(() => {}), 2500);
+    editTimer = setTimeout(() => syncNow().catch(() => {}), 1200);
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && isConnected()) syncNow().catch(() => {});

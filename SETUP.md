@@ -91,8 +91,10 @@ App terbuka tanpa jaringan dan langsung menampilkan data terakhir.
 
 Login Google punya dua kelemahan: sesinya habis tiap 1 jam, dan di app layar utama iPhone login sering tidak kembali ke app. Mode ini mengganti login dengan Apps Script kecil yang menempel di spreadsheet-mu, sehingga sinkron jalan terus tanpa login.
 
+Cara kerjanya: sekitar sekali per jam, di latar belakang, app meminta "tiket akses" Google ke skrip itu memakai kunci rahasia. Data lalu dikirim langsung ke Google Sheets API (±1 detik). Perangkat cukup dipercaya sekali, tanpa login ulang.
+
 1. Buka spreadsheet **Izud Finance Hub** yang dipakai (Spreadsheet ID-nya sama dengan yang tertulis di Pengaturan) → **Extensions → Apps Script**.
-2. Hapus isi `Code.gs`, lalu tempel seluruh isi file `tools/hub-bridge.gs`.
+2. Hapus isi `Code.gs`, lalu tempel seluruh isi file `tools/hub-bridge.gs`. Lalu di panel kiri: **Services (+)** → pilih **Google Sheets API** → **Add**. Ini mengaktifkan mode cepat, di mana data langsung dikirim ke Sheets API.
 3. Di app (laptop): ⚙︎ Pengaturan → **Sinkron tanpa login** → **Buat kunci acak**. Kunci otomatis tersalin. Di skrip, ganti `GANTI_DENGAN_KUNCI_DARI_APP` dengan kunci itu (tetap di dalam tanda kutip) → **Save** (ikon disket).
 4. **Deploy → New deployment** → ikon ⚙︎ → **Web app**:
    - Execute as: **Me**
