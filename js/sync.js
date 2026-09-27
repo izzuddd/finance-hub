@@ -285,7 +285,7 @@ async function writeReadme() {
 }
 
 // ------------------------------------------------------------ sync
-let running = null, runningSince = 0;
+let running = null, runningSince = 0, retries = 0;
 let interactiveFlag = false;
 export function syncNow({ interactive = false } = {}) {
   if (!isConnected()) return Promise.resolve();
@@ -319,9 +319,15 @@ export function syncNow({ interactive = false } = {}) {
       }
       db.getMeta().lastSync = Date.now();
       await db.saveMeta();
+      retries = 0;
       setStatus('ok', 'Tersinkron');
     } catch (e) {
       setStatus(e.auth ? 'auth' : 'error', e.message || String(e));
+      // passing hiccups (busy script, timeout, flaky network): retry by itself, up to 3 times
+      if (!e.auth && retries < 3 && /lock|timeout|terlalu lama|tidak bisa dihubungi|Gagal menghubungi|Google API 5\d\d|rate|quota/i.test(e.message || '')) {
+        retries++;
+        setTimeout(() => syncNow().catch(() => {}), retries * 15000);
+      }
       throw e;
     } finally { if (runningSince === since) running = null; }
   })();
