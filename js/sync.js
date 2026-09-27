@@ -88,7 +88,56 @@ async function getToken(interactive, after = 'sync') {
     setTimeout(() => rej(Object.assign(new Error('Login Google tidak kembali ke app — ketuk untuk coba lagi'), { auth: true })), 120000);
   });
 }
+// ------------------------------------------------------------ "sinkron tanpa login" (Apps Script bridge)
+// tools/hub-bridge.gs, bound to the hub spreadsheet, answers the same few Sheets API calls this module
+// makes, authenticated by a shared key instead of Google OAuth: no 1-hour sessions, no login popups
+// (which iOS home-screen apps can't complete). Stored per device.
+export const bridge = () => { try { return JSON.parse(localStorage.getItem('hub.bridge') || 'null'); } catch { return null; } };
+export const viaBridge = () => !!bridge()?.url;
+async function callBridge(req, b = bridge()) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 90000);
+  let r, j;
+  try {
+    // text/plain body = "simple" request, so no CORS preflight (Apps Script can't answer one)
+    r = await fetch(b.url, { method: 'POST', body: JSON.stringify({ ...req, key: b.key }), signal: ctl.signal, redirect: 'follow' });
+    j = await r.json();
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'Apps Script terlalu lama menjawab (timeout) — coba lagi'
+      : 'Apps Script tidak bisa dihubungi — cek URL /exec & akses "Anyone" (' + e.message + ')');
+  } finally { clearTimeout(timer); }
+  if (!j.ok) throw new Error('Apps Script: ' + j.error);
+  return j;
+}
+// translate the Sheets API calls below into bridge ops
+function bridgeApi(method, url, body) {
+  const u = decodeURIComponent(url);
+  if (/values:batchGet/.test(u)) return callBridge({ op: 'batchGet', ranges: [...u.matchAll(/ranges=([^&]+)/g)].map((m) => m[1]) });
+  if (/values:batchUpdate$/.test(u)) return callBridge({ op: 'batchUpdate', data: body.data });
+  if (/:append\?/.test(u)) return callBridge({ op: 'append', range: /\/values\/(.+):append/.exec(u)[1], values: body.values });
+  if (method === 'PUT') return callBridge({ op: 'batchUpdate', data: [{ range: /\/values\/([^?]+)/.exec(u)[1], values: body.values }] });
+  if (/fields=sheets\.properties\.title/.test(u)) return callBridge({ op: 'tabs' });
+  if (/:batchUpdate$/.test(u)) return callBridge({ op: 'addSheets', titles: body.requests.map((x) => x.addSheet.properties.title) });
+  return Promise.resolve({}); // Drive tagging etc.: not needed with the bridge
+}
+export async function enableBridge(url, key) {
+  url = String(url || '').trim(); key = String(key || '').trim();
+  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(url)) throw new Error('URL harus URL Web app Apps Script yang berakhiran /exec');
+  if (key.length < 16) throw new Error('Kunci terlalu pendek');
+  setStatus('syncing', 'Menghubungi Apps Script…');
+  let info;
+  try { info = await callBridge({ op: 'info' }, { url, key }); } catch (e) { setStatus('error', e.message); throw e; }
+  localStorage.setItem('hub.bridge', JSON.stringify({ url, key }));
+  const meta = db.getMeta();
+  if (meta.spreadsheetId !== info.id) { meta.rows = {}; meta.headers = {}; meta.adopt = true; }
+  meta.spreadsheetId = info.id;
+  await db.saveMeta();
+  return syncNow({ interactive: true });
+}
+export async function disableBridge() { localStorage.removeItem('hub.bridge'); }
+
 async function api(method, url, body, interactive) {
+  if (viaBridge()) return bridgeApi(method, url, body);
   const t = await getToken(interactive || interactiveFlag);
   // never hang forever on a stalled connection: give up after 45 s (next sync retries)
   const ctl = new AbortController();
@@ -171,6 +220,7 @@ export async function useSheet(idOrUrl) {
   return syncNow({ interactive: true });
 }
 export async function disconnect() {
+  localStorage.removeItem('hub.bridge');
   const meta = db.getMeta();
   delete meta.spreadsheetId; delete meta.rows; delete meta.headers;
   await db.saveMeta();
@@ -200,17 +250,24 @@ async function writeReadme() {
 }
 
 // ------------------------------------------------------------ sync
-let running = null;
+let running = null, runningSince = 0;
 let interactiveFlag = false;
 export function syncNow({ interactive = false } = {}) {
   if (!isConnected()) return Promise.resolve();
-  if (running) return running;
+  // a tap must never be swallowed by an old attempt that got stuck (e.g. a login that never came back)
+  if (running && !(interactive && Date.now() - runningSince > 20000)) return running;
+  const since = runningSince = Date.now();
   interactiveFlag = interactive;
   running = (async () => {
+    // yield first: an early return (offline / login needed) would otherwise run `finally` before
+    // `running` is assigned, leaving a finished promise in `running` that swallows every later tap
+    await null;
     try {
       if (!navigator.onLine) { setStatus('offline', 'Offline — perubahan disimpan & dikirim nanti'); return; }
-      if (!interactive && !hasToken()) { setStatus('auth', 'Ketuk titik status untuk login Google & sinkron (' + db.dirtyCount() + ' perubahan menunggu)'); return; }
-      if (interactive) await getToken(true);
+      if (!viaBridge()) {
+        if (!interactive && !hasToken()) { setStatus('auth', 'Ketuk titik status untuk login Google & sinkron (' + db.dirtyCount() + ' perubahan menunggu)'); return; }
+        if (interactive) await getToken(true);
+      }
       setStatus('syncing', 'Sinkron: menarik data dari Google Sheet…');
       await pull();
       await push();
@@ -222,7 +279,7 @@ export function syncNow({ interactive = false } = {}) {
     } catch (e) {
       setStatus(e.auth ? 'auth' : 'error', e.message || String(e));
       throw e;
-    } finally { running = null; }
+    } finally { if (runningSince === since) running = null; }
   })();
   return running;
 }

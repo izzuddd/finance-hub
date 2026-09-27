@@ -19,6 +19,14 @@ export function render(el, S) {
     <label>Google OAuth Client ID</label><input id="cid" value="${esc(sync.clientId())}" placeholder="xxxx.apps.googleusercontent.com">
     <div class="note">Lihat SETUP.md langkah 2. Disimpan di perangkat ini saja${CONFIG.GOOGLE_CLIENT_ID ? ' (default dari config.js sudah terisi)' : ''}. Data selalu tersimpan di perangkat dulu — app tetap jalan offline, lalu sinkron otomatis.</div>
     <div class="note">Untuk app di layar utama HP (iPhone), login Google memakai <i>redirect</i>. Daftarkan alamat ini di Google Cloud → Client ID → <b>Authorized redirect URIs</b>: <code style="user-select:all">${esc(sync.redirectUri())}</code></div>`);
+  const B = sync.bridge();
+  h += card('Sinkron tanpa login (disarankan untuk iPhone)', B ? `
+    <div class="note">Aktif — sinkron lewat Apps Script di spreadsheet-mu. Tidak perlu login Google, tidak ada sesi 1 jam.</div>
+    <button class="btn small ghost" id="brOff">Matikan (kembali ke login Google)</button>` : `
+    <div class="note">Login Google di app layar utama iPhone sering tidak kembali ke app dan sesinya habis tiap 1 jam. Dengan Apps Script kecil di spreadsheet-mu, sinkron jalan terus tanpa login. Cara pasang: SETUP.md → "Sinkron tanpa login".</div>
+    <label>URL Web app Apps Script (…/exec)</label><input id="brUrl" placeholder="https://script.google.com/macros/s/…/exec">
+    <label>Kunci (sama dengan KEY di skrip)</label><input id="brKey" placeholder="minimal 16 karakter">
+    <div class="flex2"><button class="btn small ghost" id="brGen">Buat kunci acak</button><button class="btn small" id="brOn">Aktifkan</button></div>`);
   h += card('Cadangan & impor', `<div class="flex2"><button class="btn small ghost" id="exp">⬇ Ekspor cadangan (JSON)</button><label class="btn small ghost filebtn">⬆ Impor JSON<input type="file" id="imp" accept=".json,application/json"></label></div>
     <div class="note">Impor = pindahan dari spreadsheet lama (file dari tools/migrate_to_hub.py) atau cadangan. Isi di perangkat ini diganti, lalu dikirim ke Google Sheets kalau terhubung.</div>`);
   h += card('Akun / rekening', M.accounts().map((a) => row(esc(a.name), `${a.currency} · ${esc(a.kind)}${a.usable === 0 ? ' · tabungan' : ''}`, `<button class="edit-ico" data-acc="${a.id}">✎</button>`)).join('') + '<button class="btn small ghost" id="addAcc">+ akun</button>');
@@ -34,6 +42,16 @@ export function render(el, S) {
   $('cid').onchange = () => { localStorage.setItem('hub.clientId', $('cid').value.trim()); toast('Client ID disimpan'); };
   on('conn', async () => { localStorage.setItem('hub.clientId', $('cid').value.trim()); try { await sync.connect(); toast('Terhubung & tersinkron ✓'); } catch (e) { toast(e.message, 5000); } render(el, S); });
   on('syncNow', async () => { try { await sync.syncNow({ interactive: true }); toast('Tersinkron ✓'); } catch (e) { toast(e.message, 5000); } render(el, S); });
+  on('brGen', () => {
+    const k = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('');
+    $('brKey').value = k;
+    navigator.clipboard?.writeText(k).then(() => toast('Kunci disalin — tempel ke KEY di skrip'), () => {});
+  });
+  on('brOn', async () => {
+    try { await sync.enableBridge($('brUrl').value, $('brKey').value); toast('Sinkron tanpa login aktif ✓'); } catch (e) { toast(e.message, 6000); }
+    render(el, S);
+  });
+  on('brOff', async () => { await sync.disableBridge(); toast('Mode Apps Script dimatikan'); render(el, S); });
   on('swap', async () => {
     const v = prompt('Tempel link spreadsheet "Izud Finance Hub" yang dipakai perangkat lain (dari tombol "Buka spreadsheet" di sana):');
     if (!v) return;

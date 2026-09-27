@@ -1,5 +1,5 @@
 // Offline-first shell cache. Bump VERSION when deploying new files.
-const VERSION = 'hub-v1.0.5';
+const VERSION = 'hub-v1.1.0';
 const SHELL = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/config.js', 'js/db.js', 'js/model.js', 'js/sync.js', 'js/ui.js', 'js/util.js',
   'js/pages/add.js', 'js/pages/budget.js', 'js/pages/insight.js', 'js/pages/plan.js', 'js/pages/saving.js', 'js/pages/settings.js', 'js/pages/trip.js'];

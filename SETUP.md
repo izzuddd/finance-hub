@@ -87,6 +87,23 @@ App terbuka tanpa jaringan dan langsung menampilkan data terakhir.
   - Edit sel biasa boleh; app menarik perubahannya.
   - **Jangan** mengganti nama tab, mengubah baris 1, menghapus baris, atau sort. App mengingat nomor baris; hapus data dari app saja.
 
+## Sinkron tanpa login (disarankan, terutama untuk iPhone)
+
+Login Google punya dua kelemahan: sesinya habis tiap 1 jam, dan di app layar utama iPhone login sering tidak kembali ke app. Mode ini mengganti login dengan Apps Script kecil yang menempel di spreadsheet-mu, sehingga sinkron jalan terus tanpa login.
+
+1. Buka spreadsheet **Izud Finance Hub** yang dipakai (Spreadsheet ID-nya sama dengan yang tertulis di Pengaturan) → **Extensions → Apps Script**.
+2. Hapus isi `Code.gs`, lalu tempel seluruh isi file `tools/hub-bridge.gs`.
+3. Di app (laptop): ⚙︎ Pengaturan → **Sinkron tanpa login** → **Buat kunci acak**. Kunci otomatis tersalin. Di skrip, ganti `GANTI_DENGAN_KUNCI_DARI_APP` dengan kunci itu (tetap di dalam tanda kutip) → **Save** (ikon disket).
+4. **Deploy → New deployment** → ikon ⚙︎ → **Web app**:
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+   - **Deploy** → Authorize access → pilih akunmu → Advanced → *Go to … (unsafe)* → Allow. Ini skripmu sendiri, jadi aman.
+   - Salin **Web app URL** (berakhiran `/exec`).
+5. Di app: tempel URL dan kunci → **Aktifkan**.
+6. Di HP: ⚙︎ Pengaturan → tempel **URL dan kunci yang sama** → **Aktifkan**. Kirim keduanya ke HP lewat Notes atau AirDrop, lalu hapus catatannya.
+
+URL + kunci = akses ke data keuanganmu. Jangan dibagikan atau di-upload ke GitHub. Kalau bocor, ganti `KEY` di skrip, lalu **Deploy → Manage deployments → Edit → Version: New version**, dan isi kunci baru di app.
+
 ## Opsional: harga emas otomatis
 
 Browser tidak bisa membaca galeri24.co.id secara langsung. Kalau mau tombol "⟳ Ambil harga buyback" berfungsi, deploy `tools/gold-endpoint.gs` (petunjuk ada di dalam filenya) lalu isi URL-nya di Pengaturan → Ubah parameter. Tanpa itu, harga dicatat manual. Emas tetap tidak dijual; ini hanya pencatatan nilai.
