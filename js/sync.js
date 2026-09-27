@@ -123,8 +123,8 @@ async function connectInner() {
   meta.consented = true;
   if (!meta.spreadsheetId) {
     const found = await findExisting();
+    if (found) return useSheet(found);
     setStatus('syncing', 'Membuat spreadsheet…');
-    if (found) { meta.spreadsheetId = found; meta.rows = {}; await db.saveMeta(); await syncNow({ interactive: true }); return found; }
     const created = await api('POST', API, {
       properties: { title: HUB_TITLE, timeZone: 'Europe/Istanbul' },
       sheets: [{ properties: { title: 'README' } }, { properties: { title: 'RINGKASAN' } },
@@ -144,12 +144,31 @@ async function connectInner() {
 async function tagFile(id) {
   try { await api('PATCH', `https://www.googleapis.com/drive/v3/files/${id}`, { appProperties: { financeHub: '1' } }); } catch { /* optional */ }
 }
+// Another device may already have created the hub sheet. Search by tag AND by title (the tag is
+// optional), and never silently fall through to creating a second spreadsheet when the search fails
+// — that splits the data across two sheets. With several candidates, take the oldest (the original).
 async function findExisting() {
+  setStatus('syncing', 'Mencari spreadsheet yang sudah ada…');
+  const qq = encodeURIComponent(`(appProperties has { key='financeHub' and value='1' } or name='${HUB_TITLE}') and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`);
+  let r;
   try {
-    const qq = encodeURIComponent("appProperties has { key='financeHub' and value='1' } and trashed=false");
-    const r = await api('GET', `https://www.googleapis.com/drive/v3/files?q=${qq}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`);
-    return r.files && r.files[0] ? r.files[0].id : null;
-  } catch { return null; }
+    r = await api('GET', `https://www.googleapis.com/drive/v3/files?q=${qq}&fields=files(id,name,createdTime)&orderBy=createdTime`);
+  } catch (e) {
+    if (e.auth) throw e;
+    throw new Error('Tidak bisa mencari spreadsheet lama di Drive (aktifkan Google Drive API di Google Cloud). ' + e.message);
+  }
+  return r.files && r.files[0] ? r.files[0].id : null;
+}
+/** Point this device at an existing hub spreadsheet (found automatically or pasted in Pengaturan).
+ *  Remote rows are pulled first; rows that exist only on this device are then sent to it. */
+export async function useSheet(idOrUrl) {
+  const id = (/\/d\/([\w-]+)/.exec(idOrUrl) || [])[1] || String(idOrUrl).trim();
+  if (!/^[\w-]{20,}$/.test(id)) throw new Error('Link / ID spreadsheet tidak valid');
+  const meta = db.getMeta();
+  meta.spreadsheetId = id; meta.rows = {}; meta.headers = {}; meta.adopt = true; meta.consented = true;
+  await db.saveMeta();
+  await tagFile(id);
+  return syncNow({ interactive: true });
 }
 export async function disconnect() {
   const meta = db.getMeta();
@@ -249,6 +268,13 @@ async function pull() {
     meta.rows[t] = rows;
   });
   if (needHeader.length) await writeHeadersMerged(needHeader);
+  if (meta.adopt) { // first sync with a sheet: send rows the sheet doesn't have yet
+    for (const t of db.TABLES) {
+      const missing = db.allRaw(t).map((r) => r.id).filter((id) => !meta.rows[t][id]);
+      if (missing.length) db.markDirty(t, missing);
+    }
+    delete meta.adopt;
+  }
   await db.saveMeta();
   if (changed) db.emitAll();
 }

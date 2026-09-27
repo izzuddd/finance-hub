@@ -13,7 +13,8 @@ export function render(el, S) {
     <div class="syncbox ${s.state}"><b>${esc(s.msg)}</b>${last ? `<div class="m">Terakhir sinkron ${new Date(last).toLocaleString('id-ID')}</div>` : ''}
     <div class="m">${db.dirtyCount()} perubahan menunggu dikirim</div></div>
     ${sync.isConnected() ? `<div class="flex2"><button class="btn small" id="syncNow">Sinkron sekarang</button><a class="btn small ghost" href="${sync.sheetUrl()}" target="_blank" rel="noopener">Buka spreadsheet</a></div>
-      <button class="btn small ghost" id="disc">Putuskan perangkat ini</button>`
+      <div class="m" style="margin:6px 0">Spreadsheet ID: <code>…${esc(sync.spreadsheetId().slice(-6))}</code> — harus sama di laptop & HP.</div>
+      <div class="flex2"><button class="btn small ghost" id="swap">Pakai spreadsheet lain…</button><button class="btn small ghost" id="disc">Putuskan perangkat ini</button></div>`
       : `<button class="btn" id="conn">Hubungkan Google Sheets</button>`}
     <label>Google OAuth Client ID</label><input id="cid" value="${esc(sync.clientId())}" placeholder="xxxx.apps.googleusercontent.com">
     <div class="note">Lihat SETUP.md langkah 2. Disimpan di perangkat ini saja${CONFIG.GOOGLE_CLIENT_ID ? ' (default dari config.js sudah terisi)' : ''}. Data selalu tersimpan di perangkat dulu — app tetap jalan offline, lalu sinkron otomatis.</div>
@@ -33,6 +34,11 @@ export function render(el, S) {
   $('cid').onchange = () => { localStorage.setItem('hub.clientId', $('cid').value.trim()); toast('Client ID disimpan'); };
   on('conn', async () => { localStorage.setItem('hub.clientId', $('cid').value.trim()); try { await sync.connect(); toast('Terhubung & tersinkron ✓'); } catch (e) { toast(e.message, 5000); } render(el, S); });
   on('syncNow', async () => { try { await sync.syncNow({ interactive: true }); toast('Tersinkron ✓'); } catch (e) { toast(e.message, 5000); } render(el, S); });
+  on('swap', async () => {
+    const v = prompt('Tempel link spreadsheet "Izud Finance Hub" yang dipakai perangkat lain (dari tombol "Buka spreadsheet" di sana):');
+    if (!v) return;
+    try { await sync.useSheet(v); toast('Tersambung ke spreadsheet itu ✓'); } catch (e) { toast(e.message, 5000); } render(el, S);
+  });
   on('disc', async () => { if (confirm('Putuskan Google Sheets di perangkat ini? Data lokal tetap ada.')) { await sync.disconnect(); render(el, S); } });
   on('exp', () => {
     const blob = new Blob([JSON.stringify(db.exportAll())], { type: 'application/json' });

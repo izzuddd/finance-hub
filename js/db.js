@@ -146,6 +146,7 @@ export function applyRemote(t, row) {
   return true;
 }
 const strip = (r) => { const o = {}; for (const k of Object.keys(r).sort()) if (k !== '_u') o[k] = r[k] ?? ''; return o; };
+export function markDirty(t, ids) { ids.forEach((id) => dirty[t].add(id)); saveDirty(); }
 export function markAllDirty() { for (const t of TABLES) for (const id of mem[t].keys()) dirty[t].add(id); saveDirty(); }
 export const emitAll = () => TABLES.forEach(emit);
 
