@@ -54,10 +54,18 @@ async function getToken(interactive) {
 }
 async function api(method, url, body, interactive) {
   const t = await getToken(interactive || interactiveFlag);
-  const r = await fetch(url, {
-    method, headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // never hang forever on a stalled connection: give up after 45 s (next sync retries)
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 45000);
+  let r;
+  try {
+    r = await fetch(url, {
+      method, headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined, signal: ctl.signal,
+    });
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'Koneksi ke Google terlalu lama (timeout) — coba lagi' : 'Gagal menghubungi Google: ' + e.message);
+  } finally { clearTimeout(timer); }
   if (r.status === 401) { token = null; const e = new Error('Sesi Google berakhir — ketuk titik status untuk login lagi'); e.auth = true; throw e; }
   if (!r.ok) throw new Error('Google API ' + r.status + ': ' + (await r.text()).slice(0, 200));
   return r.json();
@@ -67,11 +75,19 @@ const q = (s) => "'" + s.replace(/'/g, "''") + "'";
 // ------------------------------------------------------------ connect / create
 export async function connect() {
   setStatus('syncing', 'Menghubungkan ke Google…');
+  try { return await connectInner(); } catch (e) {
+    // otherwise the dot would stay blue ("syncing") forever after a failed connect
+    setStatus(e.auth ? 'auth' : 'error', e.message || String(e));
+    throw e;
+  }
+}
+async function connectInner() {
   await getToken(true);
   const meta = db.getMeta();
   meta.consented = true;
   if (!meta.spreadsheetId) {
     const found = await findExisting();
+    setStatus('syncing', 'Membuat spreadsheet…');
     if (found) { meta.spreadsheetId = found; meta.rows = {}; await db.saveMeta(); await syncNow({ interactive: true }); return found; }
     const created = await api('POST', API, {
       properties: { title: HUB_TITLE, timeZone: 'Europe/Istanbul' },
@@ -140,9 +156,10 @@ export function syncNow({ interactive = false } = {}) {
       if (!navigator.onLine) { setStatus('offline', 'Offline — perubahan disimpan & dikirim nanti'); return; }
       if (!interactive && !hasToken()) { setStatus('auth', 'Ketuk titik status untuk login Google & sinkron (' + db.dirtyCount() + ' perubahan menunggu)'); return; }
       if (interactive) await getToken(true);
-      setStatus('syncing', 'Sinkron…');
+      setStatus('syncing', 'Sinkron: menarik data dari Google Sheet…');
       await pull();
       await push();
+      setStatus('syncing', 'Sinkron: menulis RINGKASAN…');
       await writeSummary();
       db.getMeta().lastSync = Date.now();
       await db.saveMeta();
@@ -230,11 +247,13 @@ function toLine(t, row) {
 async function push() {
   const meta = db.getMeta();
   const updates = [];
-  const done = {};
+  const appends = [];
+  const knownIds = [];
+  let total = 0;
   for (const t of db.TABLES) {
     const rows = db.dirtyRows(t);
     if (!rows.length) continue;
-    done[t] = rows.map((r) => r.id);
+    total += rows.length;
     const known = rows.filter((r) => meta.rows?.[t]?.[r.id]);
     const fresh = rows.filter((r) => !meta.rows?.[t]?.[r.id]);
     const header = meta.headers[t];
@@ -242,7 +261,19 @@ async function push() {
       const n = meta.rows[t][r.id];
       updates.push({ range: `${q(t)}!A${n}:${colLetter(header.length - 1)}${n}`, values: [toLine(t, r)] });
     });
-    if (fresh.length) {
+    if (known.length) knownIds.push([t, known.map((r) => r.id)]);
+    if (fresh.length) appends.push({ t, fresh });
+  }
+  if (!total) return;
+  // new rows: one append per tab, 4 tabs in parallel; each tab is marked clean as soon as it lands,
+  // so an interrupted first sync resumes where it stopped instead of starting over
+  let sent = 0;
+  const report = () => setStatus('syncing', `Sinkron: mengirim ${sent}/${total} baris…`);
+  report();
+  const queue = appends.slice();
+  const worker = async () => {
+    for (let job; (job = queue.shift());) {
+      const { t, fresh } = job;
       const res = await api('POST', `${API}/${spreadsheetId()}/values/${encodeURIComponent(q(t) + '!A1')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
         { values: fresh.map((r) => toLine(t, r)) });
       const m = /![A-Z]+(\d+)/.exec(res.updates?.updatedRange || '');
@@ -251,12 +282,18 @@ async function push() {
         meta.rows[t] = meta.rows[t] || {};
         fresh.forEach((r, k) => { meta.rows[t][r.id] = start + k; });
       }
+      db.clearDirty(t, fresh.map((r) => r.id));
+      await db.saveMeta();
+      sent += fresh.length; report();
     }
-  }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
   for (let i = 0; i < updates.length; i += 400) {
-    await api('POST', `${API}/${spreadsheetId()}/values:batchUpdate`, { valueInputOption: 'RAW', data: updates.slice(i, i + 400) });
+    const chunk = updates.slice(i, i + 400);
+    await api('POST', `${API}/${spreadsheetId()}/values:batchUpdate`, { valueInputOption: 'RAW', data: chunk });
+    sent += chunk.length; report();
   }
-  for (const t of Object.keys(done)) db.clearDirty(t, done[t]);
+  knownIds.forEach(([t, ids]) => db.clearDirty(t, ids));
   await db.saveMeta();
 }
 
