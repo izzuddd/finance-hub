@@ -23,13 +23,75 @@ function dropToken() { token = null; tokenExp = 0; try { localStorage.removeItem
 // the app navigates to Google and Google sends the token back to this same page.
 const useRedirect = () => navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
 export const redirectUri = () => location.origin + location.pathname.replace(/index\.html$/, '');
-function loginByRedirect(after) {
-  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  localStorage.setItem('hub.oauth', JSON.stringify({ state, after }));
+const newState = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+function authUrl(state, prompt) {
   const p = new URLSearchParams({ client_id: clientId(), redirect_uri: redirectUri(), response_type: 'token', scope: SCOPE,
     include_granted_scopes: 'true', state });
-  location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + p);
+  if (prompt) p.set('prompt', prompt);
+  const hint = localStorage.getItem('hub.email'); if (hint) p.set('login_hint', hint);
+  return 'https://accounts.google.com/o/oauth2/v2/auth?' + p;
+}
+function loginByRedirect(after) {
+  const state = newState();
+  localStorage.setItem('hub.oauth', JSON.stringify({ state, after }));
+  location.assign(authUrl(state));
   return new Promise(() => {}); // the page is leaving
+}
+
+// ---- silent renewal: get a fresh 1-hour token WITHOUT any login screen or tap ----
+// Google answers `prompt=none` with a token straight away when this browser is still signed in to
+// Google and the app was approved before. Two ways to ask, whichever the browser allows:
+//  * a hidden iframe (no page change) — works in desktop browsers that still share Google cookies;
+//  * a full-page redirect at app start (home-screen apps / iPhone, where iframes can't see the cookie).
+// If Google says the user must interact (signed out, consent withdrawn), we quietly fall back to the
+// yellow dot; a tap then does the normal login.
+let silentBusy = null, silentFailAt = 0;
+const canSilent = () => !viaBridge() && isConnected() && !!clientId() && !!db.getMeta().consented;
+export function silentRenew() {
+  if (silentBusy) return silentBusy;
+  if (!canSilent() || !navigator.onLine || Date.now() - silentFailAt < 5 * 60000) return Promise.resolve(false);
+  silentBusy = new Promise((res) => {
+    const state = newState();
+    const f = document.createElement('iframe');
+    f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+    f.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+    let done = false, timer = null;
+    const finish = (ok) => {
+      if (done) return; done = true;
+      clearTimeout(timer); window.removeEventListener('message', on); f.remove();
+      if (!ok) silentFailAt = Date.now();
+      silentBusy = null; res(ok);
+    };
+    const on = (e) => {
+      if (e.origin !== location.origin || !e.data || !e.data.hubOauth) return;
+      const h = new URLSearchParams(String(e.data.hubOauth).replace(/^#/, ''));
+      if (h.get('state') !== state) return;
+      if (h.get('access_token')) { saveToken(h.get('access_token'), h.get('expires_in')); finish(true); } else finish(false);
+    };
+    window.addEventListener('message', on);
+    timer = setTimeout(() => finish(false), 8000);
+    f.src = authUrl(state, 'none');
+    document.body.appendChild(f);
+  });
+  return silentBusy;
+}
+/** App start in a home-screen app with an expired token: renew by a quick redirect (~1 s). */
+export function silentRedirectIfNeeded() {
+  if (!canSilent() || hasToken() || !useRedirect() || !navigator.onLine) return false;
+  const stale = Date.now() - (db.getMeta().lastSync || 0) > 3 * 60000;
+  if (!db.dirtyCount() && !stale) return false;
+  if (Date.now() - Number(localStorage.getItem('hub.silentAt') || 0) < 10 * 60000) return false; // no loops
+  localStorage.setItem('hub.silentAt', String(Date.now()));
+  const state = newState();
+  localStorage.setItem('hub.oauth', JSON.stringify({ state, after: 'silent' }));
+  location.assign(authUrl(state, 'none'));
+  return true;
+}
+/** Inside the hidden iframe: hand the token Google put in the URL to the app that opened us. */
+export function relayToParent() {
+  if (window.parent === window || !/access_token=|error=/.test(location.hash)) return false;
+  window.parent.postMessage({ hubOauth: location.hash }, location.origin);
+  return true;
 }
 // Called once at boot: picks up the token Google put in the URL (#access_token=…) after a redirect login.
 export function handleRedirect() {
@@ -39,7 +101,7 @@ export function handleRedirect() {
   localStorage.removeItem('hub.oauth');
   history.replaceState(null, '', location.pathname + location.search);
   if (!saved || h.get('state') !== saved.state) return { error: 'Login Google tidak valid, coba lagi' };
-  if (h.get('error')) return { error: 'Login Google gagal: ' + h.get('error') };
+  if (h.get('error')) return saved.after === 'silent' ? { silentFailed: true } : { error: 'Login Google gagal: ' + h.get('error') };
   saveToken(h.get('access_token'), h.get('expires_in'));
   return { after: saved.after };
 }
@@ -68,6 +130,7 @@ const hasToken = () => token && Date.now() < tokenExp - 60000;
 async function getToken(interactive, after = 'sync') {
   if (hasToken()) return token;
   // background syncs must not open a login popup (browsers block popups without a tap)
+  if (!interactive && (await silentRenew())) return token;
   if (!interactive) { const e = new Error('Sesi Google habis — ketuk titik status untuk login & sinkron'); e.auth = true; throw e; }
   if (!clientId()) throw new Error('Google Client ID belum diisi (Pengaturan → Google Sheets)');
   if (useRedirect()) return loginByRedirect(after);
@@ -144,8 +207,8 @@ export const bridgeMode = () => (!viaBridge() ? '' : bridgeDirect() ? 'direct' :
 // If the direct route isn't possible (old script / Sheets API off), it falls back to bridge-only sync.
 const bridgeDirect = () => viaBridge() && bridge().direct !== false;
 function setBridgeDirect(on) { const b = bridge(); if (b) { b.direct = on; localStorage.setItem('hub.bridge', JSON.stringify(b)); } }
-async function bridgeToken() {
-  if (hasToken()) return token;
+async function bridgeToken(force) {
+  if (hasToken() && !force) return token;
   const r = await callBridge({ op: 'token' });
   if (!r.token) throw Object.assign(new Error('no token'), { noDirect: true });
   saveToken(r.token, 40 * 60); // the script's token may be partly used already; refresh early
@@ -300,6 +363,7 @@ export function syncNow({ interactive = false } = {}) {
     try {
       if (!navigator.onLine) { setStatus('offline', 'Offline — perubahan disimpan & dikirim nanti'); return; }
       if (!viaBridge()) {
+        if (!interactive && !hasToken()) await silentRenew();
         if (!interactive && !hasToken()) { setStatus('auth', 'Ketuk titik status untuk login Google & sinkron (' + db.dirtyCount() + ' perubahan menunggu)'); return; }
         if (interactive) await getToken(true);
       }
@@ -313,9 +377,7 @@ export function syncNow({ interactive = false } = {}) {
       if (!fast) {
         setStatus('syncing', 'Sinkron: menarik data dari Google Sheet…');
         await pull();
-        await push();
-        setStatus('syncing', 'Sinkron: menulis RINGKASAN…');
-        await writeSummary();
+        await Promise.all([push(), writeSummary()]); // independent: RINGKASAN comes from local data
       }
       db.getMeta().lastSync = Date.now();
       await db.saveMeta();
@@ -531,13 +593,24 @@ export function startAutoSync() {
   db.onChange(() => {
     if (!isConnected()) return;
     clearTimeout(editTimer);
-    editTimer = setTimeout(() => syncNow().catch(() => {}), 1200);
+    editTimer = setTimeout(() => syncNow().catch(() => {}), 500);
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && isConnected()) syncNow().catch(() => {});
   });
   window.addEventListener('online', () => isConnected() && syncNow().catch(() => {}));
   setInterval(() => document.visibilityState === 'visible' && isConnected() && syncNow().catch(() => {}), 5 * 60 * 1000);
+  // fast mode: renew the access ticket BEFORE it runs out, so a sync never waits on Apps Script
+  const warm = () => {
+    if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+    if (!token || tokenExp - Date.now() < 10 * 60000) {
+      if (bridgeDirect()) bridgeToken(true).catch(() => {});
+      else silentRenew();
+    }
+  };
+  warm();
+  document.addEventListener('visibilitychange', warm);
+  setInterval(warm, 60000);
   if (isConnected()) setStatus('idle', 'Terhubung');
 }
 export const sheetUrl = () => spreadsheetId() ? `https://docs.google.com/spreadsheets/d/${spreadsheetId()}/edit` : '';

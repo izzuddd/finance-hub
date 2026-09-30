@@ -38,7 +38,7 @@ function paint() {
   const r = M.rateFor(currentCycle());
   $('rateLabel').textContent = r ? '₺1 = Rp ' + r : '';
 }
-let paintTimer = null;
+let paintTimer = null, slowTimer = null, syncStart = 0;
 const repaint = () => { if (document.querySelector('#overlay.show')) return; clearTimeout(paintTimer); paintTimer = setTimeout(paint, 30); };
 
 async function boot() {
@@ -61,9 +61,18 @@ async function boot() {
     d.className = 'dot ' + s.state; d.title = s.msg;
     // iPhone has no hover tooltips: show what sync is doing right under the header
     const bar = $('syncBar');
-    const vis = ['syncing', 'error', 'auth'].includes(s.state);
-    bar.className = vis ? 'show ' + s.state : '';
-    bar.textContent = vis ? (s.state === 'syncing' ? '⟳ ' : s.state === 'error' ? '⚠ ' : '🔑 ') + s.msg + '  · v' + CONFIG.APP_VERSION : '';
+    // a normal background sync stays quiet (just the dot): the entry is already saved on the device.
+    // The text line only appears for problems, or once a sync has been running for more than 4 s.
+    clearTimeout(slowTimer);
+    if (s.state !== 'syncing') syncStart = 0; else if (!syncStart) syncStart = Date.now();
+    const showBar = () => {
+      const cur = sync.getStatus();
+      const vis = ['error', 'auth'].includes(cur.state) || (cur.state === 'syncing' && Date.now() - syncStart >= 4000);
+      bar.className = vis ? 'show ' + cur.state : '';
+      bar.textContent = vis ? (cur.state === 'syncing' ? '⟳ ' : cur.state === 'error' ? '⚠ ' : '🔑 ') + cur.msg + '  · v' + CONFIG.APP_VERSION : '';
+    };
+    showBar();
+    if (s.state === 'syncing') slowTimer = setTimeout(showBar, Math.max(0, 4000 - (Date.now() - syncStart)) + 20);
     if (S.page === 'settings') repaint();
   });
   sync.startAutoSync();
@@ -80,8 +89,13 @@ async function boot() {
   // back from a Google login by redirect (home-screen app): finish what the user started
   const back = sync.handleRedirect();
   if (back?.error) toast(back.error, 5000);
+  else if (back?.silentFailed) sync.syncNow().catch(() => {}); // Google wants a real login: yellow dot, tap to log in
+  else if (back?.after === 'silent') sync.syncNow().catch(() => {});
   else if (back?.after === 'connect') sync.connect().then(() => toast('Terhubung & tersinkron ✓')).catch((e) => toast(e.message, 5000));
   else if (sync.isConnected()) sync.syncNow({ interactive: !!back }).then(() => back && toast('Tersinkron ✓')).catch(() => {});
+  // home-screen app opened with an expired Google session: renew it by a ~1 s redirect (no login screen)
+  if (!back && sync.isConnected()) setTimeout(() => sync.silentRedirectIfNeeded(), 400);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="card">Gagal memuat: ${e.message}</div>`); console.error(e); });
+// the hidden iframe used for silent token renewal lands on this page: pass the token up and stop
+if (!sync.relayToParent()) boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="card">Gagal memuat: ${e.message}</div>`); console.error(e); });
