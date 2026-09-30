@@ -305,9 +305,9 @@ export function eventData(id) {
   const spend = db.where('event_spend', (x) => x.event === id).sort((a, b) => (a.date < b.date ? 1 : -1));
   const planned = sum(items, (x) => x.price);
   const available = (Number(ev.budget) || 0) - planned;
-  // like the trip sheet: food/jajan money = budget − non-food items that are already booked (have an order date)
-  const booked = sum(items.filter((x) => !/FOOD/i.test(x.category) && x.orderDate), (x) => x.price);
-  const foodBudget = (Number(ev.budget) || 0) - booked;
+  // food/jajan budget = SUMIF(category = "FOOD"): only items whose category is exactly FOOD
+  // (not "budget − other items", which also counted leftover room from unbooked non-food items)
+  const foodBudget = sum(items.filter((x) => String(x.category || '').trim().toUpperCase() === 'FOOD'), (x) => Number(x.price) || 0);
   const spent = sum(spend, (x) => x.amount);
   const days = agenda.filter((a) => a.day);
   const daysLeft = days.filter((a) => !Number(a.checked)).length;
