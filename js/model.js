@@ -385,6 +385,7 @@ export function ruleAmount(r, month) {
 /** Remaining talangan instalments per month from the talangan table (open items only). */
 export function talanganSchedule(from, to) {
   const out = {};
+  const now = currentCycle();
   for (const t of talanganOpen()) {
     if (t.sisa <= 0 || t.monthsLeft <= 0) continue;
     const paidCycles = new Set(t.payments.map((p) => p.cycle));
@@ -392,7 +393,8 @@ export function talanganSchedule(from, to) {
     let left = t.monthsLeft;
     for (let guard = 0; left > 0 && guard < 240; guard++, m = addMonths(m, 1)) {
       if (paidCycles.has(m)) continue;
-      if (m < from) { continue; }
+      if (m < now) continue; // unpaid months in the past don't move the plan
+      if (m < from) { left--; continue; } // instalments due before the asked window are used up there
       if (m > to) break;
       out[m] = out[m] || [];
       out[m].push({ item: t.item, amount: t.perMonth });
@@ -523,6 +525,30 @@ export function applyTypical(cycle) {
   }
   return T.lines.length;
 }
+// ------------------------------------------------------------------ pockets: one goal = one pocket
+export const KAMAR_POCKET = 'Kamar Tinggede';
+export const POCKET_ROLE = {
+  'Emergency Fund': ['Dana darurat', 'Sudah penuh — tidak disetor lagi. Hanya untuk darurat sungguhan. Talangan lama tetap dicicil kembali ke sini sampai lunas.'],
+  Travelling: ['Liburan', 'Mudik Lebaran 50 jt + libur tengah tahun 30 jt = 80 jt/th → 7 jt/bln (6,67 + bantalan, karena Lebaran maju ±11 hari tiap tahun). Okt 2026–Jan 2027 tetap 4,57 jt selama talangan lama masih berat. Semua tiket & biaya trip dari sini, tidak perlu talangan.'],
+  'Ikamet & Dokumen': ['Ikamet istri', '10 jt/th → 833 rb/bln. Ikamet, visa, apostille, denklik.'],
+  PhD: ['Kuliah', 'Biaya PhD, tetap 1,33 jt/bln.'],
+  "Wifey's Specialist": ['Spesialis istri', 'Tetap 2,5 jt/bln.'],
+  House: ['Aset (emas & tanah)', 'Tidak disetor lagi (tanah lunas Des 2026). Emas tidak dijual.'],
+  'Kamar Tinggede': ['Bangun kamar', 'Sisa budget tiap bulan masuk sini sampai tahap 1 lunas, lalu untuk cicilan ke Tante Muli.'],
+  Wishlist: ['Keinginan', 'Diisi setelah kamar & pinjaman beres.'],
+};
+/** What the room plan takes from this cycle's budget: stage-1 money of our own + family-loan instalment. */
+export function kamarPlanFor(cycle) {
+  const sc = activeScenario();
+  if (!sc || cycle < currentCycle()) return null;
+  const F = forecast(sc.id);
+  const r = F.rows.find((x) => x.month === cycle);
+  if (!r) return null;
+  const own = Math.max(0, (r.cost1 || 0) - (r.draw || 0));
+  return { own, draw: r.draw || 0, repay: r.repay || 0, total: own + (r.repay || 0), done: F.stage1Done, lender: F.project?.project.lender || 'keluarga' };
+}
+const kamarValue = (c) => (savingBudget(c).find((s) => s.name === KAMAR_POCKET)?.value || 0);
+
 /** Free cash per month = income − budget (Needs/Wants/Giving/Saving) − talangan; own budget if set, else typical. */
 export function baseCashflow(scenarioId, from, to) {
   return memo('base|' + scenarioId + '|' + from + '|' + to, () => {
@@ -539,7 +565,7 @@ export function baseCashflow(scenarioId, from, to) {
         month: c, projected: !own, incomeProjected: !hasInc,
         income: hasInc ? incomeTotal(c) : I.total, thr: hasInc ? incomeLeg(c, 'thr') : I.thr, leaveCut: hasInc ? 0 : I.leaveCut,
         needs: own ? cb.needs : T.needs, wants: own ? cb.wants : T.wants, giving: own ? cb.giving : T.giving,
-        saving: own ? cb.saving : hasTargets ? componentBudgets(c).saving : T.saving,
+        saving: own ? cb.saving - kamarValue(c) : hasTargets ? componentBudgets(c).saving - kamarValue(c) : T.saving - (T.targets.find((t) => t.pocket === KAMAR_POCKET)?.target || 0),
         talangan: sum(tal[c] || [], (x) => x.amount), talItems: tal[c] || [],
       };
       r.out = r.needs + r.wants + r.giving + r.saving;

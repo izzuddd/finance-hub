@@ -88,21 +88,11 @@ function kamarView() {
   return h;
 }
 // ------------------------------------------------------------------ pocket strategy (one pocket per goal)
-const POCKET_ROLE = {
-  'Emergency Fund': ['Dana darurat', 'Sudah penuh — tidak disetor lagi. Hanya untuk darurat sungguhan. Talangan lama tetap dicicil kembali ke sini sampai lunas.'],
-  Travelling: ['Liburan', 'Mudik Lebaran 50 jt + libur tengah tahun 30 jt = 80 jt/th → 7 jt/bln (6,67 + bantalan, karena Lebaran maju ±11 hari tiap tahun). Okt 2026–Jan 2027 tetap 4,57 jt selama talangan lama masih berat. Semua tiket & biaya trip dari sini, tidak perlu talangan.'],
-  'Ikamet & Dokumen': ['Ikamet istri', '10 jt/th → 833 rb/bln. Ikamet, visa, apostille, denklik.'],
-  PhD: ['Kuliah', 'Biaya PhD, tetap 1,33 jt/bln.'],
-  "Wifey's Specialist": ['Spesialis istri', 'Tetap 2,5 jt/bln.'],
-  House: ['Aset (emas & tanah)', 'Tidak disetor lagi (tanah lunas Des 2026). Emas tidak dijual.'],
-  'Kamar Tinggede': ['Bangun kamar', 'Sisa budget tiap bulan masuk sini sampai tahap 1 lunas, lalu untuk cicilan ke Tante Muli.'],
-  Wishlist: ['Keinginan', 'Diisi setelah kamar & pinjaman beres.'],
-};
 function pocketStrategy() {
   const T = M.typicalBudget(addMonths(currentCycle(), 4));
   const rows = M.pocketsList().map((pk) => {
     const t = T.targets.find((x) => x.pocket === pk.name);
-    const [role, note] = POCKET_ROLE[pk.name] || ['', ''];
+    const [role, note] = M.POCKET_ROLE[pk.name] || ['', ''];
     return row(esc(pk.name) + (role ? ` <span class="badge">${role}</span>` : ''), esc(note), t && t.target ? fmtIDR(t.target) + '/bln' : '—');
   }).join('');
   const tr = M.pocketPlan('Travelling');
