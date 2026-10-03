@@ -602,7 +602,7 @@ export function cashflowProjection(scenarioId, { from = currentCycle(), to = '20
 // Flights are booked 3–4 months ahead, so a trip doesn't take its money in the month it starts:
 //  * plan items with an order date take their price in that month (ones ordered on/before today are
 //    assumed paid and already out of the pocket balance);
-//  * if a trip has no dated TRANSPORT item yet, tickets are estimated at TICKET_SHARE of the budget,
+//  * if a trip has no dated TIKET item yet, tickets are estimated at TICKET_SHARE of the budget,
 //    bought TICKET_LEAD months before departure;
 //  * the rest of the budget is spent in the month of departure.
 export const TICKET_SHARE = 0.4, TICKET_LEAD = 4;
@@ -616,7 +616,7 @@ export function tripSpending(e, from = currentCycle()) {
   // ordered on/before today = already paid (and already out of the pocket balance); later = paid that month
   items.forEach((x) => { dated += Number(x.price); if (x.orderDate > today) out.push({ month: [cycleOf(x.orderDate), from].sort().pop(), amount: Number(x.price), what: x.item, ev: e }); });
   const go = cycleOf(e.start);
-  if (!items.some((x) => /TRANSPORT/i.test(x.category))) {
+  if (!items.some((x) => /^TIKET$/i.test(String(x.category).trim()))) {
     const tix = Math.max(0, Math.min(budget - dated, budget * TICKET_SHARE));
     const c = [addMonths(go, -TICKET_LEAD), from].sort().pop();
     if (tix > 0) { out.push({ month: c, amount: tix, what: 'Tiket (perkiraan, ' + TICKET_LEAD + ' bln sebelum)', ev: e, estimate: true }); dated += tix; }

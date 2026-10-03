@@ -39,8 +39,8 @@ function form(k) {
   if (k !== 'transfer') {
     const def = d.category || (k === 'income' ? 'Income' : 'Needs - Food');
     h += `<label>Kategori</label><div class="chips" id="catChips">${cats.filter((c) => (k === 'income' ? /Income|Loan|Saving|Transfer/.test(c) : c !== 'Income'))
-      .map((c) => `<button type="button" data-cat="${esc(c)}" class="${c === def ? 'active' : ''}">${esc(c.replace('Needs - ', '').replace('Wants - ', '♥ '))}</button>`).join('')}</div>
-      <input type="hidden" id="fCategory" value="${esc(def)}">`;
+      .map((c) => `<button type="button" data-cat="${esc(c)}" class="${c === def ? 'active' : ''}">${M.categoryGroup(c) === 'Pulkam' ? '✈ ' + esc(c) + ' / trip' : esc(c.replace('Needs - ', '').replace('Wants - ', '♥ '))}</button>`).join('')}</div>
+      <input type="hidden" id="fCategory" value="${esc(def)}"><div class="note" id="catHint">${catHint(def)}</div>`;
   } else {
     const to = d.to || 'AKBANK';
     h += `<label>Ke akun</label><select id="fTo">${accs.map((a) => `<option${a === to ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
@@ -93,6 +93,7 @@ function bindForm(el, S) {
   el.querySelectorAll('#catChips button').forEach((b) => b.addEventListener('click', () => {
     el.querySelectorAll('#catChips button').forEach((x) => x.classList.toggle('active', x === b));
     $('fCategory').value = b.dataset.cat;
+    $('catHint').innerHTML = catHint(b.dataset.cat);
   }));
   upd();
   $('btnSave').onclick = () => save(el, S);
@@ -101,6 +102,14 @@ function saveDraft() {
   if (!$('fAmount')) return;
   st.draft = { amount: $('fAmount').value, date: $('fDate').value, from: $('fFrom').value, desc: $('fDesc').value, note: $('fNote').value,
     category: $('fCategory')?.value, to: $('fTo')?.value, admin: $('fAdmin')?.value, tl: $('fTl')?.value };
+}
+// Trip / mudik spending (tickets, costs during the trip) is paid from the Travelling pocket: it lives in
+// the saving domain, so the Pulkam group is kept out of the daily cash flow (Needs/Wants/… totals).
+// "Needs - Transport" stays for daily transport only.
+function catHint(c) {
+  if (M.categoryGroup(c) === 'Pulkam') return '✈ Biaya trip/mudik (tiket, selama trip) — dibayar dari kantong <b>Travelling</b>, <b>tidak masuk</b> cashflow harian.';
+  if (/Transport/i.test(c)) return 'Transport harian (Istanbul Kart, dll.). Tiket mudik/liburan pakai kategori ✈ Pulkam.';
+  return '';
 }
 function save(el, S) {
   const amt = parseAmount($('fAmount').value);

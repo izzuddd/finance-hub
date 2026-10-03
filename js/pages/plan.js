@@ -101,7 +101,7 @@ function pocketStrategy() {
   return `<p class="insight-p"><b>Aturan:</b> satu tujuan = satu kantong, disetor rutin tiap gajian. Pengeluaran yang sudah direncanakan selalu dibayar dari kantongnya sendiri — <b>tidak ada pinjam antar kantong</b>, jadi tidak ada cicilan balik yang bisa terlupa.</p>
     ${rows}
     <h4 class="subh">Kantong Travelling vs jadwal liburan</h4>
-    <div class="note">Saldo sekarang tercatat ${fmtIDR(tr.start)}. Tiket dibeli ±${M.TICKET_LEAD} bulan sebelum berangkat (perkiraan ${Math.round(M.TICKET_SHARE * 100)}% budget trip, atau persis kalau di trip ada item TRANSPORT bertanggal pesan); sisanya dipakai saat trip. Saldo setelah tiap pengeluaran:</div>${trH || empty('Belum ada trip berbudget')}
+    <div class="note">Saldo sekarang tercatat ${fmtIDR(tr.start)}. Tiket dibeli ±${M.TICKET_LEAD} bulan sebelum berangkat (perkiraan ${Math.round(M.TICKET_SHARE * 100)}% budget trip, atau persis kalau di trip ada item TIKET bertanggal pesan); sisanya dipakai saat trip. Saldo setelah tiap pengeluaran:</div>${trH || empty('Belum ada trip berbudget')}
     ${tr.low && tr.low.balance < 0 ? `<div class="alloc"><div class="row"><span>⚠ Kantong Travelling minus ${fmtIDR(-tr.low.balance)} di ${cycleLabel(tr.low.month, true)}. Pastikan saldo tercatat memang ada di rekening; kalau kurang, kecilkan budget trip itu atau geser setoran kamar 1–2 bulan.</span></div></div>` : ''}
     <div class="note">Talangan lama (7 cicilan ke Emergency Fund & Wifey's Specialist) tetap jalan sampai lunas ±pertengahan 2027 — sudah dihitung di budget. Setelah itu tidak ada talangan baru.</div>`;
 }

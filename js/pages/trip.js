@@ -5,7 +5,8 @@ import { esc, fmtIDR, todayStr, uid, parseAmount, weekday } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, moneyCls, empty } from '../ui.js';
 
 const st = { ev: null, sub: 'plan', pick: false };
-const CATS = ['TRANSPORT', 'HOTEL', 'FOOD', 'OLEH2', 'GIFT', 'OTHER'];
+// trip items are paid from the Travelling pocket (saving domain), never from the daily budget
+const CATS = [['TIKET', 'TIKET — pesawat/kereta pulang-pergi'], ['TRANSPORT', 'TRANSPORT — lokal selama trip'], ['HOTEL', 'HOTEL'], ['FOOD', 'FOOD'], ['OLEH2', 'OLEH2'], ['GIFT', 'GIFT'], ['OTHER', 'OTHER']];
 
 export function render(el, S) {
   const evs = M.events();
