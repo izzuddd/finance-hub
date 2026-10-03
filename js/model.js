@@ -413,60 +413,55 @@ export function projectSummary(projectId, option) {
   return { project: p, items, stage1: sum(s1, c), stage2: sum(s2, c), material1: sum(s1.filter((x) => x.kind === 'material'), c),
     upah1: sum(s1.filter((x) => x.kind === 'upah'), c), byMonth, realized: sum(items, (x) => x.realized) };
 }
-/** Month-by-month cash-flow forecast of one scenario, including the project, family loan and talangan. */
+/**
+ * Planning Kamar Tinggede — ONE source of truth with the Budget: each month's free cash is
+ *   income (assumed salary, THR, minus leave cuts) − Needs/Wants/Giving − saving targets − talangan
+ * (the month's own budget, else the typical budget). That cash pays stage 1 as the RAB schedules it;
+ * when it runs short the family loan covers the gap up to `loanMax`; beyond that the work simply waits
+ * (stage 1 stretches) — no gold is sold. The loan is repaid in `loanMonths` equal parts starting the
+ * month after stage 1 is fully paid (or `loanRepayStart` if later). Stage 2 only when `stage2On` = 1.
+ */
 export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
-  // plan at least through 2030 (the leave schedule & cash-flow projection run to Dec 2030)
   to = to || [db.setting('planHorizon', '2030-12'), '2030-12'].sort().pop();
-  const sc = db.get('scenarios', scenarioId);
-  const rules = db.where('plan_rules', (r) => r.scenario === scenarioId);
-  const items = db.where('plan_items', (r) => r.scenario === scenarioId);
-  const prj = db.all('projects')[0];
-  const ps = prj ? projectSummary(prj.id, Number(sc?.projectOption) || 1) : null;
-  const tal = talanganSchedule(from, to);
-  const months = [];
-  let bal = 0, loanTotal = 0, rem2 = ps ? ps.stage2 : 0;
-  const stage1End = prj?.stage1End || '2027-03';
-  // pass 1: loan draws (need total before repayment months)
-  const rows = [];
-  for (let m = from; m <= to; m = addMonths(m, 1)) {
-    const lines = rules.map((r) => ({ r, v: ruleAmount(r, m) })).filter((x) => x.v);
-    const income = sum(lines.filter((x) => x.r.group === 'income'), (x) => x.v) + sum(items.filter((i) => i.month === m && i.group === 'income'), (i) => i.amount);
-    const out = sum(lines.filter((x) => x.r.group !== 'income'), (x) => x.v) + sum(items.filter((i) => i.month === m && i.group !== 'income'), (i) => i.amount);
-    const talM = sum(tal[m] || [], (x) => x.amount);
-    const lc = leaveCut(m);
-    const cut = lc ? lc.cut : 0;
-    if (cut) lines.push({ r: { label: `Potongan cuti ke Indonesia (${lc.absent} hari absen, ${lc.outDays} hari di luar Turki)`, group: 'income' }, v: -cut });
-    rows.push({ month: m, income: income - cut, out, talangan: talM, net: income - cut - out - talM, lines, talItems: tal[m] || [], cost1: ps ? (ps.byMonth[m] || 0) : 0, leaveCut: cut });
-  }
-  for (const row of rows) {
-    const inStage1 = row.month <= stage1End;
-    row.draw = inStage1 ? Math.max(0, row.cost1 - (bal + row.net)) : 0;
-    loanTotal += row.draw;
-    bal = bal + row.net + row.draw - row.cost1;
-    row.balAfterStage1 = bal;
-  }
-  const repayStart = prj?.loanRepayStart || addMonths(stage1End, 1);
-  const n = Number(prj?.loanMonths) || 24;
-  const repayEach = loanTotal * (1 + (Number(prj?.loanMarkupPct) || 0) / 100) / n;
-  bal = 0;
-  let loanLeft = loanTotal * (1 + (Number(prj?.loanMarkupPct) || 0) / 100), stage2Done = '', stage1Done = '';
-  let cum = 0;
-  for (const row of rows) {
-    row.repay = row.month >= repayStart && monthsBetween(repayStart, row.month) < n ? repayEach : 0;
-    loanLeft -= row.repay;
-    const avail = bal + row.net + row.draw - row.cost1 - row.repay;
-    row.pay2 = row.month > stage1End && rem2 > 0 ? Math.max(0, Math.min(avail, rem2)) : 0;
-    rem2 -= row.pay2;
-    bal = avail - row.pay2;
-    row.balance = bal; row.loanLeft = Math.max(loanLeft, 0); row.rem2 = rem2;
-    cum += row.net;
-    row.cumNet = cum;
-    if (!stage1Done && row.month >= stage1End) stage1Done = row.month;
-    if (!stage2Done && ps && rem2 <= 0.5 && row.month > stage1End) stage2Done = row.month;
-  }
-  const st1Months = rows.filter((r) => r.month <= stage1End);
-  return { scenario: sc, project: ps, rows, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0), loanTotal, repayEach, repayStart, loanMonths: n, stage1End,
-    ownFunds: sum(st1Months, (r) => r.net), stage2Done, minBalance: Math.min(...rows.map((r) => r.balance)) };
+  return memo('fc|' + scenarioId + '|' + from + '|' + to, () => {
+    const sc = db.get('scenarios', scenarioId);
+    const prj = db.all('projects')[0];
+    const opt = Number(sc?.projectOption) || 1;
+    const ps = prj ? projectSummary(prj.id, opt) : null;
+    const base = baseCashflow(scenarioId, from, to);
+    const cap = prj && Number(prj.loanMax) > 0 ? Number(prj.loanMax) : Infinity;
+    const n = Number(prj?.loanMonths) || 24;
+    const markup = 1 + (Number(prj?.loanMarkupPct) || 0) / 100;
+    const stage2On = prj ? Number(prj.stage2On) === 1 : false;
+    const lastCost = ps ? Object.keys(ps.byMonth).sort().pop() || from : from;
+    let due = ps ? -Math.min(Number(ps.realized) || 0, ps.stage1) : 0; // already paid items reduce what's left
+    let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0;
+    const rows = base.map((b) => {
+      const r = { ...b, cost1: 0, draw: 0, repay: 0, pay2: 0 };
+      if (ps) due += (ps.byMonth[r.month] || 0) + (r.month === from ? sum(Object.entries(ps.byMonth).filter(([m]) => m < from), ([, v]) => v) : 0);
+      bal += r.net;
+      if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; }
+      if (due > 0.5) {
+        const own = Math.max(0, Math.min(due, bal));
+        bal -= own; due -= own; ownFunds += own;
+        const draw = due > 0.5 ? Math.min(due, Math.max(0, cap - loan)) : 0;
+        loan += draw; loanLeft += draw * markup; due -= draw;
+        r.cost1 = own + draw; r.draw = draw;
+      }
+      if (!done && due <= 0.5 && r.month >= lastCost) {
+        done = r.month;
+        repayStart = [addMonths(done, 1), prj?.loanRepayStart || ''].sort().pop();
+        repayEach = loanLeft / n;
+      }
+      if (done && rem2 > 0.5 && r.month > done) { r.pay2 = Math.max(0, Math.min(bal, rem2)); rem2 -= r.pay2; bal -= r.pay2; if (rem2 <= 0.5) stage2Done = r.month; }
+      r.balance = bal; r.loanLeft = Math.max(loanLeft, 0); r.rem1 = Math.max(due, 0); r.rem2 = done ? rem2 : r.rem1;
+      cum += r.net; r.cumNet = cum;
+      return r;
+    });
+    return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap, repayEach, repayStart: repayStart || prj?.loanRepayStart || '', loanMonths: n,
+      stage1End: done || '', stage1Done: done, stage1Waiting: !done, stage2On, stage2Done, ownFunds, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0),
+      minBalance: Math.min(...rows.map((r) => r.balance)) };
+  });
 }
 
 // ------------------------------------------------------------------ typical budget & cash-flow projection
@@ -528,36 +523,73 @@ export function applyTypical(cycle) {
   }
   return T.lines.length;
 }
-/** Month-by-month cash flow to `to` (default Dec 2030): income − budget − talangan, then the room project (Planning Kamar). */
-export function cashflowProjection(scenarioId, { from = currentCycle(), to = '2030-12' } = {}) {
-  return memo('cf|' + scenarioId + '|' + from + '|' + to, () => {
-    const F = scenarioId ? forecast(scenarioId, { from, to }) : null;
-    const fr = {}; (F ? F.rows : []).forEach((r) => { fr[r.month] = r; });
+/** Free cash per month = income − budget (Needs/Wants/Giving/Saving) − talangan; own budget if set, else typical. */
+export function baseCashflow(scenarioId, from, to) {
+  return memo('base|' + scenarioId + '|' + from + '|' + to, () => {
     const tal = talanganSchedule(from, to);
     const rows = [];
-    let cum = 0;
     for (let c = from; c <= to; c = addMonths(c, 1)) {
       const own = budgetLines(c).length > 0;
-      const T = own ? null : typicalBudget(c);
+      const T = typicalBudget(c);
       const hasInc = incomeLines(c).length > 0;
-      const I = hasInc ? null : projectedIncome(c);
+      const I = projectedIncome(c);
       const cb = own ? componentBudgets(c) : null;
       const hasTargets = pocketsList().some((p) => db.get('pocket_targets', c + '|' + p.name));
       const r = {
         month: c, projected: !own, incomeProjected: !hasInc,
         income: hasInc ? incomeTotal(c) : I.total, thr: hasInc ? incomeLeg(c, 'thr') : I.thr, leaveCut: hasInc ? 0 : I.leaveCut,
         needs: own ? cb.needs : T.needs, wants: own ? cb.wants : T.wants, giving: own ? cb.giving : T.giving,
-        saving: own || hasTargets ? (cb ? cb.saving : componentBudgets(c).saving) : T.saving,
+        saving: own ? cb.saving : hasTargets ? componentBudgets(c).saving : T.saving,
         talangan: sum(tal[c] || [], (x) => x.amount), talItems: tal[c] || [],
-        kamarOwn: fr[c] ? Math.max(0, (fr[c].cost1 || 0) - (fr[c].draw || 0)) : 0, repay: fr[c] ? fr[c].repay || 0 : 0,
       };
-      r.budget = r.needs + r.wants + r.giving + r.saving;
-      r.net = r.income - r.budget - r.talangan;
-      r.afterKamar = r.net - r.kamarOwn - r.repay;
-      cum += r.afterKamar; r.cum = cum;
+      r.out = r.needs + r.wants + r.giving + r.saving;
+      r.budget = r.out;
+      r.net = r.income - r.out - r.talangan;
+      r.lines = [
+        { r: { label: 'Pemasukan' + (r.incomeProjected ? ' (perkiraan)' : ''), group: 'income' }, v: r.income },
+        ...(r.leaveCut ? [{ r: { label: 'sudah dipotong cuti ke Indonesia', group: 'income' }, v: -r.leaveCut }] : []),
+        { r: { label: 'Needs', group: 'needs' }, v: r.needs }, { r: { label: 'Wants', group: 'wants' }, v: r.wants },
+        { r: { label: 'Giving', group: 'giving' }, v: r.giving }, { r: { label: 'Saving (kantong)', group: 'saving' }, v: r.saving },
+      ];
       rows.push(r);
     }
-    return { rows, scenario: F?.scenario || null };
+    return rows;
+  });
+}
+/** Budget → Proyeksi cashflow: the base cash flow plus what the room project takes (stage 1 own money, loan repayments). */
+export function cashflowProjection(scenarioId, { from = currentCycle(), to = '2030-12' } = {}) {
+  return memo('cf|' + scenarioId + '|' + from + '|' + to, () => {
+    const F = scenarioId ? forecast(scenarioId, { from, to }) : null;
+    const rows = (F ? F.rows : baseCashflow(scenarioId, from, to)).map((b) => {
+      const r = { ...b, kamarOwn: Math.max(0, (b.cost1 || 0) - (b.draw || 0)), repay: b.repay || 0 };
+      r.afterKamar = r.net - r.kamarOwn - r.repay - (b.pay2 || 0);
+      return r;
+    });
+    let cum = 0; rows.forEach((r) => { cum += r.afterKamar; r.cum = cum; });
+    return { rows, scenario: F?.scenario || null, forecast: F };
+  });
+}
+/** A pocket's projected balance: today's balance + monthly target − trips (budget of trips paid from it, in the month they start). */
+export function pocketPlan(name, { from = currentCycle(), to = '2030-12', trips = true } = {}) {
+  return memo('pp|' + name + '|' + from + '|' + to, () => {
+    const p = pockets().find((x) => x.name === name);
+    let bal = p ? Number(p.actual) || 0 : 0;
+    const start = bal;
+    const out = {};
+    if (trips) db.all('events').filter((e) => e.kind === 'trip' && Number(e.budget) > 0 && e.start && cycleOf(e.start) >= from).forEach((e) => {
+      const c = cycleOf(e.start); (out[c] = out[c] || []).push(e);
+    });
+    const rows = [];
+    for (let c = from; c <= to; c = addMonths(c, 1)) {
+      const t = db.get('pocket_targets', c + '|' + name);
+      const T = typicalBudget(c).targets.find((x) => x.pocket === name);
+      const dep = c === from ? 0 : t ? Number(t.target) || 0 : T ? T.target : 0;
+      const spend = sum(out[c] || [], (e) => Number(e.budget) || 0);
+      bal += dep - spend;
+      rows.push({ month: c, dep, spend, trips: out[c] || [], balance: bal });
+    }
+    const low = rows.reduce((m, r) => (!m || r.balance < m.balance ? r : m), null);
+    return { name, start, rows, low };
   });
 }
 

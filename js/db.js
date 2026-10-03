@@ -29,7 +29,7 @@ export const SCHEMA = {
   scenarios: ['id', 'name', 'note', 'active', 'projectOption'],
   plan_rules: ['id', 'scenario', 'label', 'group', 'amount', 'start', 'end', 'freq', 'growth', 'growthPart', 'note', 'active'],
   plan_items: ['id', 'scenario', 'month', 'label', 'group', 'amount', 'note'],
-  projects: ['id', 'name', 'contPct', 'stage1End', 'lender', 'loanRepayStart', 'loanMonths', 'loanMarkupPct', 'note'],
+  projects: ['id', 'name', 'contPct', 'stage1End', 'lender', 'loanRepayStart', 'loanMonths', 'loanMarkupPct', 'note', 'loanMax', 'stage2On'],
   project_items: ['id', 'project', 'stage', 'section', 'kind', 'label', 'spec', 'qty', 'unit', 'price', 'month', 'opt1', 'opt2', 'cont', 'source', 'note', 'realized'],
 };
 export const META_COLS = ['_u', '_d'];

@@ -40,9 +40,10 @@ function kamarView() {
   if (p) {
     h += tiles([
       tile('Biaya tahap 1', fmtIDR(p.stage1), `<div class="m">material ${fmtShort(p.material1)} · upah ${fmtShort(p.upah1)}</div>`),
-      tile('Uang sendiri s/d ' + cycleLabel(F.stage1End), fmtIDR(F.ownFunds)),
-      tile('Pinjam ' + esc(p.project.lender || 'keluarga'), `<b class="${F.loanTotal ? 'neg' : 'pos'}">${fmtIDR(F.loanTotal)}</b>`, F.loanTotal ? `<div class="m">${fmtIDR(F.repayEach)}/bln × ${F.loanMonths} mulai ${cycleLabel(F.repayStart, true)}</div>` : '<div class="m">tidak perlu pinjam</div>'),
-      tile('Tahap lanjutan', fmtIDR(p.stage2), `<div class="m">${F.stage2Done ? 'lunas ±' + cycleLabel(F.stage2Done, true) : 'belum lunas s/d ' + cycleLabel(rows[rows.length - 1].month, true)}</div>`),
+      tile('Tahap 1 lunas', F.stage1Done ? cycleLabel(F.stage1Done, true) : '<span class="neg">belum s/d ' + cycleLabel(rows[rows.length - 1].month, true) + '</span>', `<div class="m">uang sendiri ${fmtShort(F.ownFunds)}${F.stage1Done && F.stage1Done > (p.project.stage1End || '') ? ' · mundur dari jadwal RAB ' + cycleLabel(p.project.stage1End || '2027-03', true) : ''}</div>`),
+      tile('Pinjam ' + esc(p.project.lender || 'keluarga'), `<b class="${F.loanTotal ? 'neg' : 'pos'}">${fmtIDR(F.loanTotal)}</b>`, (F.loanCap < Infinity ? `<div class="m">maks ${fmtShort(F.loanCap)}</div>` : '') + (F.loanTotal ? `<div class="m">${fmtIDR(F.repayEach)}/bln × ${F.loanMonths} mulai ${cycleLabel(F.repayStart, true)}</div>` : '<div class="m">tidak perlu pinjam</div>')),
+      F.stage2On ? tile('Tahap lanjutan', fmtIDR(p.stage2), `<div class="m">${F.stage2Done ? 'lunas ±' + cycleLabel(F.stage2Done, true) : 'belum lunas s/d ' + cycleLabel(rows[rows.length - 1].month, true)}</div>`)
+        : tile('Tahap lanjutan', '<span class="m">tidak direncanakan</span>', `<div class="m">fokus tahap 1 · RAB lanjutan ${fmtShort(p.stage2)} disimpan</div>`),
     ], 'two');
   }
   const cuts = rows.filter((r) => r.leaveCut);
@@ -61,8 +62,8 @@ function kamarView() {
   const chart = lineChart(lbl, [
     { name: 'Sisa untuk bangun / nabung', color: '#189a5c', values: rows.map((r) => r.net), area: true },
     { name: 'Sisa pinjaman', color: '#d64545', values: rows.map((r) => r.loanLeft) },
-    { name: 'Sisa biaya lanjutan', color: '#c98a12', values: rows.map((r) => r.rem2) },
-  ]) + '<div class="note">Hijau = pemasukan dikurangi semua pengeluaran rutin, talangan, liburan & cadangan. Proyek dan pinjaman dihitung terpisah di tabel.</div>';
+    { name: F.stage2On ? 'Sisa biaya tahap 1 / lanjutan' : 'Sisa biaya tahap 1', color: '#c98a12', values: rows.map((r) => r.rem2) },
+  ]) + '<div class="note">Hijau = sisa budget bulan itu (pemasukan − Needs/Wants/Giving − setoran kantong − talangan), sama persis dengan Budget → Proyeksi cashflow. Sisa ini yang membayar tahap 1; kalau kurang, pinjaman menutup sampai batasnya, sisanya menunggu bulan berikutnya.</div>';
   const years = groupBy(rows, (r) => r.month.slice(0, 4));
   let t = '';
   for (const [y, rs] of Object.entries(years)) {
@@ -73,16 +74,46 @@ function kamarView() {
     t += collapsible('y' + y, `<div class="nm">${y}<span class="amt">sisa ${fmtShort(sum(rs, (r) => r.net))}</span></div>`, body, st.open['y' + y] ?? y === currentCycle().slice(0, 4));
   }
   h += collapsible('kCash', `<div class="nm">📈 Arus kas & pinjaman<span class="amt">s/d ${cycleLabel(rows[rows.length - 1].month, true)}</span></div>`, chart + t, st.open.kCash);
+  h += collapsible('kPocket', '<div class="nm">👛 Strategi kantong<span class="amt">tanpa cross-kantong</span></div>', pocketStrategy(), st.open.kPocket);
   const opt = Number(F.scenario?.projectOption) || 1;
   const prj = db.all('projects')[0];
   h += collapsible('kRab', `<div class="nm">🧱 RAB kamar<span class="amt">${p ? fmtShort(p.stage1 + p.stage2) + ' · Opsi ' + opt : ''}</span></div>`, projectBody(opt), st.open.kRab);
   if (prj) h += collapsible('kLoan', `<div class="nm">🤝 Skema pinjaman<span class="amt">${esc(prj.lender || '–')} · ${prj.loanMonths || 24} bln</span></div>`,
     row('Pemberi pinjaman', '', esc(prj.lender || '–')) + row('Tahap 1 selesai', '', cycleLabel(prj.stage1End || '2027-03', true)) +
-    row('Mulai cicil', '', cycleLabel(prj.loanRepayStart || '2027-04', true)) + row('Lama cicilan', '', (prj.loanMonths || 24) + ' bulan') + row('Tambahan / terima kasih', '', (prj.loanMarkupPct || 0) + '%') +
+    row('Batas pinjaman', '', Number(prj.loanMax) ? fmtIDR(prj.loanMax) : 'tanpa batas') + row('Mulai cicil', 'sebulan setelah tahap 1 lunas', F.repayStart ? cycleLabel(F.repayStart, true) : '–') +
+    row('Lama cicilan', '', (prj.loanMonths || 24) + ' bulan') + row('Tambahan / terima kasih', '', (prj.loanMarkupPct || 0) + '%') + row('Tahap lanjutan', '', Number(prj.stage2On) ? 'ikut direncanakan' : 'tidak (fokus tahap 1)') +
     '<button class="btn small ghost" id="editPrj">✎ Ubah proyek & pinjaman</button>', st.open.kLoan);
-  h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Tahap 1 dibayar sesuai jadwal RAB. Kalau uang bulan itu kurang, sisanya otomatis dicatat sebagai <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> (tanpa jual emas). Pinjaman dicicil tetap mulai ${cycleLabel(F.repayStart, true)} selama ${F.loanMonths} bulan. Tahap lanjutan dibayar sebisanya dari sisa uang tiap bulan.</p>
+  h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong. Pinjaman dicicil ${F.loanMonths} bulan mulai sebulan setelah tahap 1 lunas.</p>
     <p class="insight-p">Pilih Opsi 1 / Opsi 2 di atas. Potongan gaji saat cuti ikut jadwal di Trip & acara. Arus kas bulanan versi budget ada di <b>Budget → Proyeksi cashflow</b>.</p>`, st.open.kHelp);
   return h;
+}
+// ------------------------------------------------------------------ pocket strategy (one pocket per goal)
+const POCKET_ROLE = {
+  'Emergency Fund': ['Dana darurat', 'Sudah penuh — tidak disetor lagi. Hanya untuk darurat sungguhan. Talangan lama tetap dicicil kembali ke sini sampai lunas.'],
+  Travelling: ['Liburan', 'Mudik Lebaran 50 jt + libur tengah tahun 30 jt = 80 jt/th → 7 jt/bln (6,67 + bantalan, karena Lebaran maju ±11 hari tiap tahun). Okt 2026–Jan 2027 tetap 4,57 jt selama talangan lama masih berat. Semua tiket & biaya trip dari sini, tidak perlu talangan.'],
+  'Ikamet & Dokumen': ['Ikamet istri', '10 jt/th → 833 rb/bln. Ikamet, visa, apostille, denklik.'],
+  PhD: ['Kuliah', 'Biaya PhD, tetap 1,33 jt/bln.'],
+  "Wifey's Specialist": ['Spesialis istri', 'Tetap 2,5 jt/bln.'],
+  House: ['Aset (emas & tanah)', 'Tidak disetor lagi (tanah lunas Des 2026). Emas tidak dijual.'],
+  'Kamar Tinggede': ['Bangun kamar', 'Sisa budget tiap bulan masuk sini sampai tahap 1 lunas, lalu untuk cicilan ke Tante Muli.'],
+  Wishlist: ['Keinginan', 'Diisi setelah kamar & pinjaman beres.'],
+};
+function pocketStrategy() {
+  const T = M.typicalBudget(addMonths(currentCycle(), 4));
+  const rows = M.pocketsList().map((pk) => {
+    const t = T.targets.find((x) => x.pocket === pk.name);
+    const [role, note] = POCKET_ROLE[pk.name] || ['', ''];
+    return row(esc(pk.name) + (role ? ` <span class="badge">${role}</span>` : ''), esc(note), t && t.target ? fmtIDR(t.target) + '/bln' : '—');
+  }).join('');
+  const tr = M.pocketPlan('Travelling');
+  const trips = tr.rows.filter((r) => r.trips.length);
+  const trH = trips.map((r) => row(cycleLabel(r.month, true), r.trips.map((e) => esc(e.name) + ' ' + fmtShort(e.budget)).join(', '), `<span class="${moneyCls(r.balance)}">${fmtShort(r.balance)}</span>`)).join('');
+  return `<p class="insight-p"><b>Aturan:</b> satu tujuan = satu kantong, disetor rutin tiap gajian. Pengeluaran yang sudah direncanakan selalu dibayar dari kantongnya sendiri — <b>tidak ada pinjam antar kantong</b>, jadi tidak ada cicilan balik yang bisa terlupa.</p>
+    ${rows}
+    <h4 class="subh">Kantong Travelling vs jadwal liburan</h4>
+    <div class="note">Saldo sekarang tercatat ${fmtIDR(tr.start)}. Saldo setelah tiap trip (budget trip diambil di bulan berangkat):</div>${trH || empty('Belum ada trip berbudget')}
+    ${tr.low && tr.low.balance < 0 ? `<div class="alloc"><div class="row"><span>⚠ Kantong Travelling minus ${fmtIDR(-tr.low.balance)} di ${cycleLabel(tr.low.month, true)}. Pastikan saldo tercatat memang ada di rekening; kalau kurang, kecilkan budget trip itu atau geser setoran kamar 1–2 bulan.</span></div></div>` : ''}
+    <div class="note">Talangan lama (7 cicilan ke Emergency Fund & Wifey's Specialist) tetap jalan sampai lunas ±pertengahan 2027 — sudah dihitung di budget. Setelah itu tidak ada talangan baru.</div>`;
 }
 function monthDetail(m) {
   const F = M.forecast(st.sc);
@@ -124,8 +155,10 @@ function editProject() {
     { k: 'lender', label: 'Pinjam ke', type: 'text', value: p.lender },
     { k: 'loanRepayStart', label: 'Mulai cicil pinjaman', type: 'month', value: p.loanRepayStart },
     { k: 'loanMonths', label: 'Lama cicilan (bulan)', type: 'number', value: p.loanMonths },
-    { k: 'loanMarkupPct', label: 'Tanda terima kasih (%)', type: 'number', value: p.loanMarkupPct || 0 }],
-    onSave: (v) => { db.put('projects', { ...p, ...v }); toast('Tersimpan ✓'); } });
+    { k: 'loanMarkupPct', label: 'Tanda terima kasih (%)', type: 'number', value: p.loanMarkupPct || 0 },
+    { k: 'loanMax', label: 'Batas pinjaman (IDR, kosong = tanpa batas)', type: 'money', value: p.loanMax || '' },
+    { k: 'stage2On', label: 'Rencanakan juga tahap lanjutan', type: 'check', value: Number(p.stage2On) === 1 }],
+    onSave: (v) => { db.put('projects', { ...p, ...v, loanMax: Number(v.loanMax) || 0, stage2On: v.stage2On ? 1 : 0 }); toast('Tersimpan ✓'); } });
 }
 function editItem(id) {
   const prj = db.all('projects')[0];

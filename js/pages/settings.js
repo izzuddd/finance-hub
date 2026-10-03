@@ -78,8 +78,10 @@ export async function importJSON(data) {
   if (!data || data.format !== 'finance-hub' || !data.tables) throw new Error('bukan file Finance Hub');
   if (data.merge) { // add-on file (e.g. a leave schedule): adds/updates these rows only, keeps everything else
     const n = Object.values(data.tables).reduce((a, rows) => a + rows.length, 0);
-    if (!confirm(`Tambahkan ${n} baris dari file ini${data.title ? ' (' + data.title + ')' : ''}? Data lain tidak diubah.`)) throw new Error('dibatalkan');
+    const nd = Object.values(data.deletes || {}).reduce((a, ids) => a + ids.length, 0);
+    if (!confirm(`Terapkan ${n} baris${nd ? ` & hapus ${nd} baris` : ''} dari file ini${data.title ? ' (' + data.title + ')' : ''}? Data lain tidak diubah.`)) throw new Error('dibatalkan');
     for (const [t, rows] of Object.entries(data.tables)) if (db.TABLES.includes(t) && rows.length) db.putMany(t, rows);
+    for (const [t, ids] of Object.entries(data.deletes || {})) if (db.TABLES.includes(t)) ids.forEach((id) => db.del(t, id));
     return;
   }
   if (db.all('transactions').length && !confirm(`Ganti data di perangkat ini dengan isi file (${(data.tables.transactions || []).length} transaksi)?`)) throw new Error('dibatalkan');
