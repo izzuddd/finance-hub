@@ -12,13 +12,21 @@ const GROUPS = [['income', 'Pemasukan'], ['needs', 'Needs'], ['wants', 'Wants'],
 const FREQ = [['monthly', 'tiap bulan'], ['spread', 'per tahun, dicicil 12×'], ['yearly', 'sekali setahun (bulan mulai)'], ['lebaran', 'sekali setahun di siklus Lebaran'], ['once', 'sekali (bulan mulai)']];
 
 export function render(el, S) {
-  if (st.sub !== 'acara' && st.sub !== 'kamar') st.sub = 'kamar';
-  const scs = db.all('scenarios').filter((s) => Number(s.active) !== 0);
-  st.sc = st.sc && db.get('scenarios', st.sc) ? st.sc : scs[0]?.id;
-  let h = seg('pSeg', [['acara', 'Trip & acara'], ['kamar', 'Planning Kamar Tinggede']], st.sub);
+  if (!['acara', 'kamar', 'kos'].includes(st.sub)) st.sub = 'kamar';
+  const main = M.activeScenario();
+  const scs = db.all('scenarios').filter((s) => Number(s.active) !== 0).sort((a, b) => (a.id === main?.id ? -1 : b.id === main?.id ? 1 : 0));
+  st.sc = st.sc && db.get('scenarios', st.sc) ? st.sc : main?.id || scs[0]?.id;
+  let h = seg('pSeg', [['acara', 'Trip & acara'], ['kamar', 'Kamar Tinggede'], ['kos', 'Kos Palu']], st.sub);
   if (st.sub === 'acara') { el.innerHTML = h + '<div id="tripRoot"></div>'; bindSeg(el, 'pSeg', (k) => { st.sub = k; render(el, S); }); return trip.render($('tripRoot'), S); }
+  if (st.sub === 'kos') {
+    el.innerHTML = h + kosView(); bindSeg(el, 'pSeg', (k) => { st.sub = k; render(el, S); });
+    el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
+    el.querySelectorAll('[data-kostipe]').forEach((b) => b.addEventListener('click', () => { db.setSetting('kosPlan', { ...db.setting('kosPlan', {}), tipe: b.dataset.kostipe }); }));
+    $('kosEdit').onclick = editKos;
+    return;
+  }
   if (!scs.length) { el.innerHTML = h + card('Belum ada skenario', '<div class="note">Skenario dibuat dari file impor (tools/migrate_to_hub.py).</div>'); bindSeg(el, 'pSeg', (k) => { st.sub = k; render(el, S); }); return; }
-  h += `<div class="chips">${scs.map((s) => `<button data-sc="${s.id}" class="${s.id === st.sc ? 'active' : ''}">${esc(s.name)}</button>`).join('')}</div>`;
+  h += `<div class="chips">${scs.map((s) => `<button data-sc="${s.id}" class="${s.id === st.sc ? 'active' : ''}">${s.id === main?.id ? '★ ' : ''}${esc(s.name)}</button>`).join('')}</div>`;
   h += kamarView();
   el.innerHTML = h;
   bindSeg(el, 'pSeg', (k) => { st.sub = k; render(el, S); });
@@ -40,8 +48,10 @@ function kamarView() {
   if (p) {
     h += tiles([
       tile('Biaya tahap 1', fmtIDR(p.stage1), `<div class="m">material ${fmtShort(p.material1)} · upah ${fmtShort(p.upah1)}</div>`),
-      tile('Tahap 1 lunas', F.stage1Done ? cycleLabel(F.stage1Done, true) : '<span class="neg">belum s/d ' + cycleLabel(rows[rows.length - 1].month, true) + '</span>', `<div class="m">uang sendiri ${fmtShort(F.ownFunds)}${F.stage1Done && F.stage1Done > (p.project.stage1End || '') ? ' · mundur dari jadwal RAB ' + cycleLabel(p.project.stage1End || '2027-03', true) : ''}</div>`),
-      tile('Pinjam ' + esc(p.project.lender || 'keluarga'), `<b class="${F.loanTotal ? 'neg' : 'pos'}">${fmtIDR(F.loanTotal)}</b>`, (F.loanCap < Infinity ? `<div class="m">maks ${fmtShort(F.loanCap)}</div>` : '') + (F.loanTotal ? `<div class="m">${fmtIDR(F.repayEach)}/bln × ${F.loanMonths} mulai ${cycleLabel(F.repayStart, true)}</div>` : '<div class="m">tidak perlu pinjam</div>')),
+      tile('Tahap 1 lunas', F.stage1Done ? cycleLabel(F.stage1Done, true) : '<span class="neg">belum s/d ' + cycleLabel(rows[rows.length - 1].month, true) + '</span>', `<div class="m">uang sendiri ${fmtShort(F.ownFunds)}${F.firstOwnMonth ? ' · mulai nabung kamar ' + cycleLabel(F.firstOwnMonth, true) : ''}</div>`),
+      tile('Dana dari ' + esc(p.project.lender || 'keluarga'), `<b class="${F.loanTotal ? 'neg' : 'pos'}">${fmtIDR(F.loanTotal)}</b>`,
+        (F.tranche ? `<div class="m">${fmtShort(F.tranche.amount)} uang kami: ${fmtShort(F.tranche.each)}/bln × ${F.tranche.months} mulai ${cycleLabel(F.tranche.start, true)}</div>` : '') +
+        (F.familyLoan ? `<div class="m">pinjaman ${fmtShort(F.familyLoan)}: ${fmtShort(F.repayEach)}/bln × ${F.loanMonths} mulai ${cycleLabel(F.repayStart, true)}</div>` : '')),
       F.stage2On ? tile('Tahap lanjutan', fmtIDR(p.stage2), `<div class="m">${F.stage2Done ? 'lunas ±' + cycleLabel(F.stage2Done, true) : 'belum lunas s/d ' + cycleLabel(rows[rows.length - 1].month, true)}</div>`)
         : tile('Tahap lanjutan', '<span class="m">tidak direncanakan</span>', `<div class="m">fokus tahap 1 · RAB lanjutan ${fmtShort(p.stage2)} disimpan</div>`),
     ], 'two');
@@ -80,7 +90,8 @@ function kamarView() {
   h += collapsible('kRab', `<div class="nm">🧱 RAB kamar<span class="amt">${p ? fmtShort(p.stage1 + p.stage2) + ' · Opsi ' + opt : ''}</span></div>`, projectBody(opt), st.open.kRab);
   if (prj) h += collapsible('kLoan', `<div class="nm">🤝 Skema pinjaman<span class="amt">${esc(prj.lender || '–')} · ${prj.loanMonths || 24} bln</span></div>`,
     row('Pemberi pinjaman', '', esc(prj.lender || '–')) + row('Tahap 1 selesai', '', cycleLabel(prj.stage1End || '2027-03', true)) +
-    row('Batas pinjaman', '', Number(prj.loanMax) ? fmtIDR(prj.loanMax) : 'tanpa batas') + row('Mulai cicil', 'sebulan setelah tahap 1 lunas', F.repayStart ? cycleLabel(F.repayStart, true) : '–') +
+    row('Batas dana dari ' + esc(prj.lender || 'keluarga'), '', Number(prj.loanMax) ? fmtIDR(prj.loanMax) : 'tanpa batas') +
+    (Number(prj.trancheAmt) ? row('Bagian uang kami', `dicicil ${prj.trancheMonths || 12} bln mulai ${cycleLabel(prj.trancheStart || '2027-03', true)}`, fmtIDR(prj.trancheAmt)) : '') + row('Mulai cicil', 'sebulan setelah tahap 1 lunas', F.repayStart ? cycleLabel(F.repayStart, true) : '–') +
     row('Lama cicilan', '', (prj.loanMonths || 24) + ' bulan') + row('Tambahan / terima kasih', '', (prj.loanMarkupPct || 0) + '%') + row('Tahap lanjutan', '', Number(prj.stage2On) ? 'ikut direncanakan' : 'tidak (fokus tahap 1)') +
     '<button class="btn small ghost" id="editPrj">✎ Ubah proyek & pinjaman</button>', st.open.kLoan);
   h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong. Pinjaman dicicil ${F.loanMonths} bulan mulai sebulan setelah tahap 1 lunas.</p>
@@ -104,6 +115,57 @@ function pocketStrategy() {
     <div class="note">Saldo sekarang tercatat ${fmtIDR(tr.start)}. Tiket dibeli ±${M.TICKET_LEAD} bulan sebelum berangkat (perkiraan ${Math.round(M.TICKET_SHARE * 100)}% budget trip, atau persis kalau di trip ada item TIKET bertanggal pesan); sisanya dipakai saat trip. Saldo setelah tiap pengeluaran:</div>${trH || empty('Belum ada trip berbudget')}
     ${tr.low && tr.low.balance < 0 ? `<div class="alloc"><div class="row"><span>⚠ Kantong Travelling minus ${fmtIDR(-tr.low.balance)} di ${cycleLabel(tr.low.month, true)}. Pastikan saldo tercatat memang ada di rekening; kalau kurang, kecilkan budget trip itu atau geser setoran kamar 1–2 bulan.</span></div></div>` : ''}
     <div class="note">Talangan lama (7 cicilan ke Emergency Fund & Wifey's Specialist) tetap jalan sampai lunas ±pertengahan 2027 — sudah dihitung di budget. Setelah itu tidak ada talangan baru.</div>`;
+}
+// ------------------------------------------------------------------ Kos Palu (tanah 6×30 m, Vatu Gusu)
+function kosView() {
+  const P = M.kosPlan(), K = P.K;
+  const pick = P.pick, isKos = K.tipe === 'kos';
+  const fund1 = M.kosFunding(P.fase1.capex), fundAll = M.kosFunding(pick.capex);
+  let h = `<div class="chips"><button data-kostipe="kos" class="${isKos ? 'active' : ''}">Kos-kosan</button><button data-kostipe="kontrakan" class="${!isKos ? 'active' : ''}">Kontrakan</button><button id="kosEdit">✎ asumsi</button></div>`;
+  h += tiles([
+    tile('Unit prospektif', `<b>${pick.units} ${isKos ? 'kamar' : 'unit'}</b>`, `<div class="m">${K.lantai} lantai · tapak ${P.tapak.toFixed(0)} m² · luas bangunan ${P.gfa.toFixed(0)} m²</div>`),
+    tile('Biaya bangun (lengkap)', fmtShort(pick.capex), `<div class="m">${fmtShort(K.biayaM2)}/m² + ${isKos ? 'perabot, ' : ''}utilitas, izin, ${K.kontinjensi}% cadangan</div>`),
+    tile('Bersih / bulan', `<span class="pos">${fmtShort(pick.perMonth)}</span>`, `<div class="m">sewa ${fmtShort(pick.rent)} × okupansi ${isKos ? K.okupansiKos : K.okupansiKontrakan}% − operasional ${isKos ? K.opexKos : K.opexKontrakan}%</div>`),
+    tile('Imbal hasil', `${pick.yieldPct.toFixed(1)}%/th`, `<div class="m">balik modal ±${pick.payback.toFixed(1)} th</div>`),
+  ], 'two');
+  h += collapsible('kosUnits', '<div class="nm">📐 Berapa unit muat di 6×30 m?<span class="amt">kos vs kontrakan</span></div>', `
+    <p class="insight-p">Lahan ${K.lebar}×${K.panjang} m = ${P.luas} m². Dengan KDB ${K.kdb}% (perkiraan), sempadan depan ${K.gsbDepan} m (parkir motor) dan ±2 m ruang terbuka belakang, bangunan bisa ±<b>${K.lebar} × ${P.panjangBangun.toFixed(0)} m</b>.</p>
+    <div class="tbl"><div class="th"><span></span><span>Kos</span><span>Kontrakan</span></div>
+      <div class="tr"><span>Ukuran unit</span><span>${K.kamarLebar}×${(K.lebar - K.koridor).toFixed(1)} m + KM dalam</span><span>±${K.unitKontrakanM2} m² (1 KT, R. tamu, dapur, KM)</span></div>
+      <div class="tr"><span>Per lantai</span><span>${P.perLantaiKos}</span><span>${P.perLantaiKtr}</span></div>
+      <div class="tr"><span>${K.lantai} lantai (−1 untuk tangga)</span><span><b>${P.kos.units} kamar</b></span><span><b>${P.ktr.units} unit</b></span></div>
+      <div class="tr"><span>Sewa (asumsi)</span><span>${fmtShort(K.sewaKos)}/bln</span><span>${fmtShort(K.sewaKontrakan)}/bln</span></div>
+      <div class="tr"><span>Bersih / tahun</span><span>${fmtShort(P.kos.net)}</span><span>${fmtShort(P.ktr.net)}</span></div>
+      <div class="tr"><span>Biaya bangun</span><span>${fmtShort(P.kos.capex)}</span><span>${fmtShort(P.ktr.capex)}</span></div>
+      <div class="tr"><span>Imbal hasil</span><span>${P.kos.yieldPct.toFixed(1)}%</span><span>${P.ktr.yieldPct.toFixed(1)}%</span></div></div>
+    <div class="note">Lahan selebar 6 m paling efisien untuk kamar berderet dengan koridor samping. Kos memberi pendapatan per m² lebih tinggi; kontrakan lebih sedikit pergantian penyewa & pengelolaan. Jangan 3 lantai: Palu zona gempa tinggi, biaya struktur naik tajam.</div>`, st.open.kosUnits ?? true);
+  h += collapsible('kosFase', `<div class="nm">🏗️ Bangun bertahap<span class="amt">fase 1 ${fmtShort(P.fase1.capex)}</span></div>`, `
+    ${row('Fase 1 — lantai 1, struktur siap 2 lantai', `${P.fase1.units} ${isKos ? 'kamar' : 'unit'} · fondasi & kolom dihitung +${K.strukturPlus}% untuk lantai 2`, fmtIDR(P.fase1.capex))}
+    ${row('Fase 2 — lantai 2', `+${pick.units - P.fase1.units} ${isKos ? 'kamar' : 'unit'}, dibangun dari hasil sewa + tabungan`, fmtIDR(Math.max(0, pick.capex - P.fase1.capex)))}
+    ${row('Fase 1 menghasilkan', `±${fmtShort(P.fase1.perMonth)}/bln bersih`, `${P.fase1.yieldPct.toFixed(1)}%/th`)}`, st.open.kosFase ?? true);
+  const when = (f) => (f.hit ? cycleLabel(f.hit, true) : '> 15 th lagi');
+  h += collapsible('kosDana', `<div class="nm">💰 Kapan dananya cukup?<span class="amt">fase 1 ±${when(fund1)}</span></div>`, `
+    <p class="insight-p">Tanpa jual emas & tanpa utang: semua sisa bulanan setelah budget, kamar dan cicilan Tante Muli masuk kantong <b>Kos Palu</b> mulai <b>${cycleLabel(fund1.from, true)}</b> (sebulan setelah tahap 1 kamar lunas)${fund1.loanFree ? `; setelah pinjaman lunas ${cycleLabel(fund1.loanFree, true)} sisanya makin besar` : ''}. Setelah 2030 ±${fmtShort(fund1.pace)}/bln.</p>
+    ${row('Dana fase 1 cukup', fmtIDR(P.fase1.capex), `<b>${when(fund1)}</b>`)}${row('Dana bangun lengkap cukup', fmtIDR(pick.capex), `<b>${when(fundAll)}</b>`)}
+    <div class="note">Setelah 2030 dihitung dengan laju sisa rata-rata 2030 (gaji naik & inflasi biaya belum dimasukkan). Mempercepat: mulai dari 1 lantai lebih kecil, KPR/pinjaman bank untuk sebagian (hasil sewa ikut membayar cicilan), atau patungan keluarga.</div>`, st.open.kosDana ?? true);
+  h += collapsible('kosCek', '<div class="nm">✅ Wajib dicek sebelum mulai</div>', `
+    <p class="insight-p">• <b>Zona rawan bencana (ZRB) Palu</b>: pastikan lahan di Tanamodindi bukan zona terlarang (sesar Palu-Koro / likuefaksi) — cek di Dinas Tata Ruang/PUPR Kota Palu. Struktur wajib tahan gempa (SNI 1726).</p>
+    <p class="insight-p">• <b>PBG</b> (dulu IMB): KDB/KLB/GSB pasti untuk Jl. Vatu Gusu, dan aturan rumah kos.</p>
+    <p class="insight-p">• <b>Harga sewa</b>: survei 10–15 kos/kontrakan di Tanamodindi & sekitar Untad (Mamikos/99.co + datang langsung). Angka sewa & biaya di sini asumsi.</p>
+    <p class="insight-p">• <b>Air & listrik</b>: sumur/PDAM, token listrik per kamar, septic tank komunal.</p>`, st.open.kosCek);
+  return h;
+}
+function editKos() {
+  const K = M.kosSettings();
+  const f = (k, label, type = 'number') => ({ k, label, type, value: K[k] });
+  openModal({ title: 'Asumsi kos / kontrakan', sub: 'Tanah Vatu Gusu, Palu — ubah sesuai survei', fields: [
+    f('lebar', 'Lebar tanah (m)'), f('panjang', 'Panjang tanah (m)'), f('kdb', 'KDB (%)'), f('gsbDepan', 'Sempadan depan (m)'), f('lantai', 'Jumlah lantai'),
+    f('kamarLebar', 'Lebar kamar kos (m)'), f('koridor', 'Lebar koridor (m)'), f('unitKontrakanM2', 'Luas 1 unit kontrakan (m²)'),
+    f('biayaM2', 'Biaya bangun per m² (IDR)', 'money'), f('strukturPlus', 'Tambahan struktur fase 1 untuk lantai 2 (%)'), f('perabotKos', 'Perabot per kamar kos (IDR)', 'money'),
+    f('utilitas', 'Utilitas: listrik, air, septic (IDR)', 'money'), f('perizinan', 'PBG, gambar, sertifikat (IDR)', 'money'), f('kontinjensi', 'Cadangan biaya (%)'),
+    f('sewaKos', 'Sewa kos per kamar/bln (IDR)', 'money'), f('okupansiKos', 'Okupansi kos (%)'), f('opexKos', 'Operasional kos (% pendapatan)'),
+    f('sewaKontrakan', 'Sewa kontrakan per unit/bln (IDR)', 'money'), f('okupansiKontrakan', 'Okupansi kontrakan (%)'), f('opexKontrakan', 'Operasional kontrakan (%)')],
+    onSave: (v) => { const o = {}; Object.keys(v).forEach((k) => { o[k] = Number(v[k]) || 0; }); db.setSetting('kosPlan', { ...db.setting('kosPlan', {}), ...o }); toast('Tersimpan ✓'); } });
 }
 function monthDetail(m) {
   const F = M.forecast(st.sc);
@@ -146,9 +208,12 @@ function editProject() {
     { k: 'loanRepayStart', label: 'Mulai cicil pinjaman', type: 'month', value: p.loanRepayStart },
     { k: 'loanMonths', label: 'Lama cicilan (bulan)', type: 'number', value: p.loanMonths },
     { k: 'loanMarkupPct', label: 'Tanda terima kasih (%)', type: 'number', value: p.loanMarkupPct || 0 },
-    { k: 'loanMax', label: 'Batas pinjaman (IDR, kosong = tanpa batas)', type: 'money', value: p.loanMax || '' },
+    { k: 'loanMax', label: 'Batas dana dari pemberi pinjaman (IDR, kosong = tanpa batas)', type: 'money', value: p.loanMax || '' },
+    { k: 'trancheAmt', label: 'Bagian uang kami di dalamnya (IDR)', type: 'money', value: p.trancheAmt || '' },
+    { k: 'trancheStart', label: 'Bagian uang kami dicicil mulai', type: 'month', value: p.trancheStart || '' },
+    { k: 'trancheMonths', label: 'Lama cicilan bagian uang kami (bulan)', type: 'number', value: p.trancheMonths || 12 },
     { k: 'stage2On', label: 'Rencanakan juga tahap lanjutan', type: 'check', value: Number(p.stage2On) === 1 }],
-    onSave: (v) => { db.put('projects', { ...p, ...v, loanMax: Number(v.loanMax) || 0, stage2On: v.stage2On ? 1 : 0 }); toast('Tersimpan ✓'); } });
+    onSave: (v) => { db.put('projects', { ...p, ...v, loanMax: Number(v.loanMax) || 0, trancheAmt: Number(v.trancheAmt) || 0, trancheMonths: Number(v.trancheMonths) || 12, stage2On: v.stage2On ? 1 : 0 }); toast('Tersimpan ✓'); } });
 }
 function editItem(id) {
   const prj = db.all('projects')[0];

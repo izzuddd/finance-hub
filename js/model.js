@@ -438,16 +438,25 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     const lastCost = ps ? Object.keys(ps.byMonth).sort().pop() || from : from;
     let due = ps ? -Math.min(Number(ps.realized) || 0, ps.stage1) : 0; // already paid items reduce what's left
     let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0;
+    // part of the advance is our own money paid back on a fixed schedule (e.g. 10 jt over 12 months from Mar 2027)
+    const trAmt = Math.min(Number(prj?.trancheAmt) || 0, cap), trStart = prj?.trancheStart || '', trN = Number(prj?.trancheMonths) || 12;
+    let trLeft = 0;
     const rows = base.map((b) => {
       const r = { ...b, cost1: 0, draw: 0, repay: 0, pay2: 0 };
       if (ps) due += (ps.byMonth[r.month] || 0) + (r.month === from ? sum(Object.entries(ps.byMonth).filter(([m]) => m < from), ([, v]) => v) : 0);
       bal += r.net;
+      r.repayTr = 0;
+      if (trAmt && trStart && r.month >= trStart && trLeft > 0.5) { r.repayTr = Math.min(trAmt / trN, trLeft); trLeft -= r.repayTr; bal -= r.repayTr; }
       if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; }
+      r.repay += r.repayTr;
       if (due > 0.5) {
         const own = Math.max(0, Math.min(due, bal));
         bal -= own; due -= own; ownFunds += own;
         const draw = due > 0.5 ? Math.min(due, Math.max(0, cap - loan)) : 0;
-        loan += draw; loanLeft += draw * markup; due -= draw;
+        loan += draw; due -= draw;
+        // the first `trAmt` drawn is the own-money tranche (fixed schedule); the rest is the family loan
+        const toTr = Math.max(0, Math.min(draw, trAmt - (loan - draw)));
+        trLeft += toTr; loanLeft += (draw - toTr) * markup;
         r.cost1 = own + draw; r.draw = draw;
       }
       if (!done && due <= 0.5 && r.month >= lastCost) {
@@ -456,11 +465,13 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
         repayEach = loanLeft / n;
       }
       if (done && rem2 > 0.5 && r.month > done) { r.pay2 = Math.max(0, Math.min(bal, rem2)); rem2 -= r.pay2; bal -= r.pay2; if (rem2 <= 0.5) stage2Done = r.month; }
-      r.balance = bal; r.loanLeft = Math.max(loanLeft, 0); r.rem1 = Math.max(due, 0); r.rem2 = done ? rem2 : r.rem1;
+      r.balance = bal; r.loanLeft = Math.max(loanLeft + trLeft, 0); r.rem1 = Math.max(due, 0); r.rem2 = done ? rem2 : r.rem1;
       cum += r.net; r.cumNet = cum;
       return r;
     });
-    return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap, repayEach, repayStart: repayStart || prj?.loanRepayStart || '', loanMonths: n,
+    const firstOwn = rows.find((r) => r.cost1 - r.draw > 0.5);
+    return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap, tranche: trAmt ? { amount: trAmt, start: trStart, months: trN, each: trAmt / trN } : null,
+      familyLoan: Math.max(0, loan - trAmt), firstOwnMonth: firstOwn ? firstOwn.month : '', repayEach, repayStart: repayStart || prj?.loanRepayStart || '', loanMonths: n,
       stage1End: done || '', stage1Done: done, stage1Waiting: !done, stage2On, stage2Done, ownFunds, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0),
       minBalance: Math.min(...rows.map((r) => r.balance)) };
   });
@@ -471,7 +482,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
 // (2026 pattern): recurring lines only (one-offs that appear in a single cycle are left out), the
 // latest saving targets, income from the plan's salary assumptions (raise each January, THR in the
 // Lebaran cycle) minus the leave-in-Indonesia cut, plus the Lebaran extras from the plan.
-export const activeScenario = () => db.all('scenarios').find((s) => Number(s.active) !== 0) || null;
+export const activeScenario = () => { const main = db.get('scenarios', db.setting('mainScenario', '')); return main && Number(main.active) !== 0 ? main : db.all('scenarios').find((s) => Number(s.active) !== 0) || null; };
 const lineKey = (l) => l.panel + '|' + (l.grp || '') + '|' + l.label;
 export function templateCycle(cycle) {
   return memo('tplc|' + cycle, () => [...new Set(db.all('budget').map((b) => b.cycle))].filter((c) => c <= cycle).sort().pop() || '');
@@ -647,6 +658,58 @@ export function pocketPlan(name, { from = currentCycle(), to = '2030-12', trips 
     const low = rows.reduce((m, r) => (!m || r.balance < m.balance ? r : m), null);
     return { name, start, rows, low };
   });
+}
+
+// ------------------------------------------------------------------ kos / kontrakan (tanah 6×30 m, Vatu Gusu, Palu)
+// Every number below is an editable ASSUMPTION (Rencana → Kos Palu → ✎), not a quote: check rents with local
+// listings, building rules (KDB/GSB) with the PBG office and the hazard zone (ZRB) before committing.
+export const KOS_DEFAULT = {
+  lebar: 6, panjang: 30, kdb: 60, gsbDepan: 5, lantai: 2, koridor: 1.2, kamarLebar: 3, unitKontrakanM2: 34,
+  biayaM2: 3500000, strukturPlus: 15, perabotKos: 3000000, utilitas: 25000000, perizinan: 15000000, kontinjensi: 10,
+  sewaKos: 800000, sewaKontrakan: 1300000, okupansiKos: 85, okupansiKontrakan: 90, opexKos: 15, opexKontrakan: 8,
+  tipe: 'kos', tabungMulai: '',
+};
+export const kosSettings = () => ({ ...KOS_DEFAULT, ...db.setting('kosPlan', {}) });
+export function kosPlan(K = kosSettings()) {
+  const luas = K.lebar * K.panjang;
+  // footprint: limited by KDB and by front setback + 2 m open space at the back
+  const panjangBangun = Math.max(0, Math.min(K.panjang - K.gsbDepan - 2, (luas * K.kdb / 100) / K.lebar));
+  const tapak = panjangBangun * K.lebar;
+  const perLantaiKos = Math.floor(panjangBangun / K.kamarLebar); // rooms along a side corridor
+  const kosUnits = perLantaiKos * K.lantai - (K.lantai > 1 ? 1 : 0); // one room slot for the stairs
+  const perLantaiKtr = Math.floor(tapak / K.unitKontrakanM2);
+  const ktrUnits = Math.max(0, perLantaiKtr * K.lantai - (K.lantai > 1 ? 1 : 0));
+  const gfa = tapak * K.lantai;
+  const cap = (units, furnish) => (gfa * K.biayaM2 + units * furnish + K.utilitas + K.perizinan) * (1 + K.kontinjensi / 100);
+  const fin = (units, rent, occ, opex, capex) => {
+    const gross = units * rent * 12 * occ / 100, net = gross * (1 - opex / 100);
+    return { units, rent, gross, net, perMonth: net / 12, yieldPct: capex ? net / capex * 100 : 0, payback: net ? capex / net : 0, capex };
+  };
+  const kos = fin(kosUnits, K.sewaKos, K.okupansiKos, K.opexKos, cap(kosUnits, K.perabotKos));
+  const ktr = fin(ktrUnits, K.sewaKontrakan, K.okupansiKontrakan, K.opexKontrakan, cap(ktrUnits, 0));
+  // phase 1: ground floor only, but structure (foundation/columns) already sized for the upper floor
+  const u1 = K.tipe === 'kos' ? perLantaiKos - (K.lantai > 1 ? 1 : 0) : Math.max(0, perLantaiKtr - (K.lantai > 1 ? 1 : 0));
+  const fase1Capex = (tapak * K.biayaM2 * (1 + K.strukturPlus / 100) + u1 * (K.tipe === 'kos' ? K.perabotKos : 0) + K.utilitas + K.perizinan) * (1 + K.kontinjensi / 100);
+  const pick = K.tipe === 'kos' ? kos : ktr;
+  const fase1 = fin(u1, pick.rent, K.tipe === 'kos' ? K.okupansiKos : K.okupansiKontrakan, K.tipe === 'kos' ? K.opexKos : K.opexKontrakan, fase1Capex);
+  return { K, luas, panjangBangun, tapak, gfa, perLantaiKos, perLantaiKtr, kos, ktr, pick, fase1 };
+}
+/** When can the kos be funded? Saving everything left after the budget, kamar & Tante Muli (Budget → Proyeksi cashflow), extrapolated after 2030 at the 2030 pace. */
+export function kosFunding(target, { start } = {}) {
+  const sc = activeScenario();
+  const rows = sc ? cashflowProjection(sc.id).rows : [];
+  const F = sc ? forecast(sc.id) : null;
+  const lastRepay = F ? [...F.rows].reverse().find((r) => r.repay > 0.5) : null;
+  // the cash flow already pays Tante Muli's instalments, so saving for the kos can start right after stage 1
+  const from = start || (F?.stage1Done ? addMonths(F.stage1Done, 1) : currentCycle());
+  let cum = 0, hit = '';
+  const path = [];
+  rows.filter((r) => r.month >= from).forEach((r) => { cum += Math.max(0, r.afterKamar); path.push({ month: r.month, cum }); if (!hit && cum >= target) hit = r.month; });
+  const tail = rows.slice(-12);
+  const pace = tail.length ? sum(tail, (r) => Math.max(0, r.afterKamar)) / tail.length : 0;
+  let m = rows.length ? rows[rows.length - 1].month : currentCycle();
+  for (let i = 0; !hit && pace > 0 && i < 180; i++) { m = addMonths(m, 1); cum += pace; path.push({ month: m, cum, extrapolated: true }); if (cum >= target) hit = m; }
+  return { from, hit, pace, path, loanFree: lastRepay ? addMonths(lastRepay.month, 1) : '' };
 }
 
 // RINGKASAN tab for the spreadsheet (plain values)
