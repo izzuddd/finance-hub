@@ -3,22 +3,34 @@
 import * as db from '../db.js';
 import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, fmtMoney, parseAmount, currentCycle, cycleLabel, cyclePeriod, addMonths, uid, sum, pct } from '../util.js';
-import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, collapsible, moneyCls, empty } from '../ui.js';
+import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, collapsible, moneyCls, empty, lineChart } from '../ui.js';
+import { fmtShort, groupBy } from '../util.js';
 
-const st = { cycle: null, sub: 'budget', open: {} };
+const st = { cycle: null, sub: 'budget', open: {}, sc: null };
 const PANELS = [['NEEDS', 'Needs'], ['WANTS', 'Wants'], ['GIVING', 'Giving']];
 
 export function render(el, S) {
   st.cycle = st.cycle || currentCycle();
   const c = st.cycle;
   let h = `<div class="cyclebar"><button class="btn small ghost" data-cyc="-1">‹</button><div><b>${cycleLabel(c, true)}</b><div class="m">${cyclePeriod(c)}</div></div><button class="btn small ghost" data-cyc="1">›</button></div>`;
-  h += seg('bSeg', [['budget', 'Budget'], ['gaji', 'Gaji'], ['transfer', 'Transfer & TL'], ['siklus', 'Saldo awal']], st.sub);
+  if (st.sub === 'siklus') st.sub = 'budget'; // "Saldo awal" now lives inside the Budget tab
+  h += seg('bSeg', [['budget', 'Budget'], ['gaji', 'Gaji'], ['transfer', 'Transfer & TL'], ['proyeksi', 'Proyeksi cashflow']], st.sub);
+  if (st.sub === 'proyeksi') {
+    el.innerHTML = h + cashflowView();
+    bindTop(el, S);
+    el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
+    el.querySelectorAll('[data-cfsc]').forEach((b) => b.addEventListener('click', () => { st.sc = b.dataset.cfsc; render(el, S); }));
+    el.querySelectorAll('[data-cfm]').forEach((n) => n.addEventListener('click', () => cashflowDetail(n.dataset.cfm)));
+    return;
+  }
   const hasLines = M.budgetLines(c).length > 0;
-  if (!hasLines && st.sub !== 'siklus') {
-    const prev = M.cyclesWithData().filter((x) => x < c && M.budgetLines(x).length).pop();
-    h += card('Belum ada budget untuk siklus ini', `<p class="note">Budget dibuat per siklus di satu database untuk semua tahun — tidak perlu file baru tiap tahun.</p>
-      ${prev ? `<button class="btn" id="copyPrev">Salin dari ${cycleLabel(prev, true)}</button>` : ''}<button class="btn ghost" id="addFirst">+ Mulai dari kosong</button>`);
+  if (!hasLines) {
+    // no budget yet (e.g. Jan 2027): show the typical budget projected from the 2026 pattern
+    h += typicalView(c);
     el.innerHTML = h; bindTop(el, S);
+    el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
+    const prev = M.cyclesWithData().filter((x) => x < c && M.budgetLines(x).length).pop();
+    $('useTypical').onclick = () => { const n = M.applyTypical(c); toast(n + ' baris budget dibuat ✓'); render(el, S); };
     $('copyPrev') && ($('copyPrev').onclick = () => { const n = M.copyBudget(prev, c); toast(n + ' baris disalin ✓'); render(el, S); });
     $('addFirst').onclick = () => editLine(null, 'NEEDS');
     return;
@@ -26,7 +38,6 @@ export function render(el, S) {
   if (st.sub === 'budget') h += budgetView(c);
   if (st.sub === 'gaji') h += incomeView(c);
   if (st.sub === 'transfer') h += transferView(c) + tlPlan(c);
-  if (st.sub === 'siklus') h += cycleSetup(c);
   el.innerHTML = h;
   bindTop(el, S);
   el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => {
@@ -71,6 +82,8 @@ function budgetView(c) {
     <div class="row"><span><b>Gaji mid</b> ${fmtIDR(mid)}</span><span>dipakai ${fmtIDR(midA)} → <b class="${moneyCls(mid - midA)}">${fmtIDR(mid - midA)}</b></span></div>
     <div class="row"><span><b>Gaji end</b> ${fmtIDR(end)}</span><span>dipakai ${fmtIDR(endA)} → <b class="${moneyCls(end - endA)}">${fmtIDR(end - endA)}</b></span></div>
     ${unassigned ? `<div class="row"><span class="m">${unassigned} baris belum diberi waktu bayar (mid/end)</span><button class="btn small ghost" id="classify">atur</button></div>` : ''}</div>`;
+  const accs = M.accounts(), filled = accs.filter((a) => M.initialBalance(c, a.name) != null).length;
+  h += collapsible('SALDO', `<div class="nm">SALDO AWAL<span class="amt">${filled}/${accs.length} akun</span></div><div class="pct">tgl 15</div>`, setupBody(c), st.open.SALDO);
   PANELS.forEach(([k, name], i) => {
     const lines = M.panelLines(c, k);
     const groups = [];
@@ -294,9 +307,9 @@ function tlBuffer(c) {
 }
 
 // ------------------------------------------------------------------ cycle setup (initial balances)
-function cycleSetup(c) {
+function setupBody(c) {
   const prev = addMonths(c, -1);
-  let h = `<div class="card"><h3><span>Saldo awal — ${cycleLabel(c, true)}</span></h3><div class="note">Isi tanggal 15 (gaji pertama). "Akhir lalu" = saldo akhir hitungan siklus sebelumnya; selisih ditandai sebagai anomali.</div>`;
+  let h = `<div class="note">Isi tanggal 15 (gaji pertama). "Akhir lalu" = saldo akhir hitungan siklus sebelumnya; selisih ditandai sebagai anomali.</div>`;
   M.accounts().forEach((a) => {
     const v = M.initialBalance(c, a.name);
     const pe = M.balanceOf(prev, a.name);
@@ -305,7 +318,72 @@ function cycleSetup(c) {
       <div class="note">Akhir lalu: ${fmtMoney(pe, a.currency)} <button class="refresh" data-use="${esc(a.id)}" data-v="${Math.round(pe * 100) / 100}">pakai</button>
       ${v != null && Math.abs(diff) > 0.005 ? ` · <span class="${moneyCls(diff)}">selisih ${fmtMoney(diff, a.currency)}</span> ⚠` : v != null ? ' · cocok ✓' : ''}</div>`;
   });
-  return h + '<button class="btn" id="saveInit">Simpan saldo awal</button></div>';
+  return h + '<button class="btn" id="saveInit">Simpan saldo awal</button>';
+}
+
+// ------------------------------------------------------------------ typical budget for an empty cycle
+function typicalView(c) {
+  const T = M.typicalBudget(c), I = M.projectedIncome(c);
+  const prev = M.cyclesWithData().filter((x) => x < c && M.budgetLines(x).length).pop();
+  const alloc = T.needs + T.wants + T.giving + T.saving;
+  let h = `<div class="alloc"><div class="row"><b>📋 Perkiraan budget</b><span class="badge w">belum dipakai</span></div>
+    <div class="row"><span class="m">Siklus ini belum punya budget. Ini perkiraan dari pola budget ${T.src ? cycleLabel(T.src, true) : '2026'} (baris rutin saja) + asumsi gaji. Ketuk "Pakai" untuk menjadikannya budget siklus ini, lalu ubah seperlunya.</span></div>
+    <div class="sep"></div>
+    <div class="row big"><span>Pemasukan (perkiraan)</span><span>${fmtIDR(I.total)}</span></div>
+    <div class="row"><span>Gaji mid${I.leaveCut ? ' <span class="m">(− potongan cuti ' + fmtIDR(I.leaveCut) + ')</span>' : ''}</span><span>${fmtIDR(I.mid)}</span></div>
+    <div class="row"><span>Gaji end</span><span>${fmtIDR(I.end)}</span></div>
+    ${I.thr ? `<div class="row"><span>THR</span><span>${fmtIDR(I.thr)}</span></div>` : ''}
+    <div class="row"><span>Dialokasikan</span><span>${fmtIDR(alloc)}</span></div>
+    <div class="row"><span>Sisa</span><span class="${moneyCls(I.total - alloc)}"><b>${fmtIDR(I.total - alloc)}</b></span></div></div>`;
+  PANELS.forEach(([k, name]) => {
+    const ls = T.lines.filter((l) => l.panel === k);
+    const body = ls.map((l) => row(esc(l.label) + (l.extra ? ' <span class="badge">Lebaran</span>' : ''), esc(l.grp || ''), fmtIDR(l.idr))).join('') || empty('—');
+    h += collapsible('T' + k, `<div class="nm">${name.toUpperCase()}<span class="amt">${fmtIDR(sum(ls, (l) => l.idr))}</span></div><div class="pct">${pct(sum(ls, (l) => l.idr), alloc)}%</div>`, body, st.open['T' + k]);
+  });
+  h += collapsible('TSAVING', `<div class="nm">SAVING<span class="amt">${fmtIDR(T.saving)}</span></div><div class="pct">${pct(T.saving, alloc)}%</div>`,
+    T.targets.map((t) => row(esc(t.pocket), 'target', fmtIDR(t.target))).join(''), st.open.TSAVING);
+  h += `<button class="btn" id="useTypical">✓ Pakai perkiraan ini untuk ${cycleLabel(c, true)}</button>
+    ${prev ? `<button class="btn ghost" id="copyPrev">Salin persis dari ${cycleLabel(prev, true)}</button>` : ''}<button class="btn ghost" id="addFirst">+ Mulai dari kosong</button>`;
+  return h;
+}
+
+// ------------------------------------------------------------------ cash-flow projection to 2030
+function cashflowView() {
+  const scs = db.all('scenarios').filter((s) => Number(s.active) !== 0);
+  st.sc = st.sc && db.get('scenarios', st.sc) ? st.sc : scs[0]?.id;
+  const P = M.cashflowProjection(st.sc);
+  const rows = P.rows;
+  const total = sum(rows, (r) => r.afterKamar), neg = rows.filter((r) => r.afterKamar < -1000);
+  const minR = rows.reduce((m, r) => (!m || r.afterKamar < m.afterKamar ? r : m), null);
+  let h = scs.length > 1 ? `<div class="chips">${scs.map((s) => `<button data-cfsc="${s.id}" class="${s.id === st.sc ? 'active' : ''}">Kamar: ${esc(s.name)}</button>`).join('')}</div>` : '';
+  h += tiles([
+    tile('Sisa s/d Des 2030', `<span class="${moneyCls(total)}">${fmtIDR(total)}</span>`, '<div class="m">setelah budget, talangan & kamar</div>'),
+    tile('Rata-rata / bulan', `<span class="${moneyCls(total / rows.length)}">${fmtIDR(total / rows.length)}</span>`),
+    tile('Bulan minus', neg.length ? `<span class="neg">${neg.length} bulan</span>` : '<span class="pos">tidak ada</span>', minR ? `<div class="m">terendah ${cycleLabel(minR.month, true)} ${fmtShort(minR.afterKamar)}</div>` : ''),
+    tile('Sisa tahap lanjutan', 'dibayar dari sisa ini', '<div class="m">lihat Rencana → Planning Kamar</div>'),
+  ], 'two');
+  h += card('Sisa per bulan', lineChart(rows.map((r) => cycleLabel(r.month)), [
+    { name: 'Sisa setelah budget & talangan', color: '#189a5c', values: rows.map((r) => r.net), area: true },
+    { name: 'Sisa setelah kamar (tahap 1 + cicilan)', color: '#2f6fed', values: rows.map((r) => r.afterKamar) },
+  ]) + '<div class="note">Bulan yang belum punya budget memakai <b>perkiraan</b> dari pola 2026 (ditandai ≈). Pemasukan: asumsi gaji (naik tiap Januari, THR di siklus Lebaran) dikurangi potongan cuti ke Indonesia.</div>');
+  const years = groupBy(rows, (r) => r.month.slice(0, 4));
+  for (const [y, rs] of Object.entries(years)) {
+    const body = `<div class="tbl"><div class="th"><span>Bln</span><span>Masuk</span><span>Budget</span><span>Talangan</span><span>Kamar</span><span>Sisa</span></div>` +
+      rs.map((r) => `<div class="tr" data-cfm="${r.month}" role="button"><span>${cycleLabel(r.month)}${r.projected ? ' ≈' : ''}</span><span>${fmtShort(r.income)}</span><span>${fmtShort(r.budget)}</span>
+        <span>${r.talangan ? fmtShort(r.talangan) : ''}</span><span>${r.kamarOwn + r.repay ? fmtShort(r.kamarOwn + r.repay) : ''}</span><span class="${moneyCls(r.afterKamar)}">${fmtShort(r.afterKamar)}</span></div>`).join('') + '</div>';
+    h += collapsible('cf' + y, `<div class="nm">${y}<span class="amt">sisa ${fmtShort(sum(rs, (r) => r.afterKamar))}</span></div><div class="pct">${rs.filter((r) => r.afterKamar < -1000).length ? rs.filter((r) => r.afterKamar < -1000).length + ' bln minus' : ''}</div>`, body, st.open['cf' + y] ?? y === currentCycle().slice(0, 4));
+  }
+  return h;
+}
+function cashflowDetail(m) {
+  const r = M.cashflowProjection(st.sc).rows.find((x) => x.month === m);
+  const ln = (s, v, neg) => `<div class="row"><span>${s}</span><span class="${neg ? 'neg' : ''}">${neg ? '−' : ''}${fmtIDR(v)}</span></div>`;
+  openModal({ title: 'Cashflow ' + cycleLabel(m, true), sub: r.projected ? 'Budget = perkiraan dari pola 2026' : 'Budget siklus ini',
+    fields: [{ k: 'i', type: 'info', value: `<div class="alloc">${ln('Pemasukan' + (r.incomeProjected ? ' (perkiraan)' : ''), r.income)}${r.thr ? ln('· termasuk THR', r.thr) : ''}${r.leaveCut ? ln('· sudah dipotong cuti ke Indonesia', r.leaveCut, true) : ''}
+      ${ln('Needs', r.needs, true)}${ln('Wants', r.wants, true)}${ln('Giving', r.giving, true)}${ln('Saving', r.saving, true)}
+      ${r.talItems.map((x) => ln('Talangan ' + esc(x.item), x.amount, true)).join('')}<div class="sep"></div>${ln('<b>Sisa setelah budget</b>', r.net)}
+      ${r.kamarOwn ? ln('Kamar tahap 1 (uang sendiri)', r.kamarOwn, true) : ''}${r.repay ? ln('Cicilan pinjaman kamar', r.repay, true) : ''}
+      <div class="sep"></div>${ln('<b>Sisa akhir</b>', r.afterKamar)}${ln('Kumulatif sejak ' + cycleLabel(currentCycle(), true), r.cum)}</div>` }] });
 }
 function saveInit(c) {
   M.accounts().forEach((a) => {

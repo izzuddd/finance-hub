@@ -23,6 +23,7 @@ export function render(el, S) {
   el.innerHTML = h;
   el.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => { st.ev = b.dataset.ev; st.pick = false; render(el, S); }));
   $('evToggle').onclick = () => { st.pick = !st.pick; render(el, S); };
+  el.querySelectorAll('[data-evdel]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); if (deleteEvent(b.dataset.evdel)) { st.pick = true; render(el, S); } }));
   $('newEv').onclick = () => editEvent(null);
   bindSeg(el, 'tSeg', (k) => { st.sub = k; render(el, S); });
   const on = (sel, fn) => el.querySelectorAll(sel).forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); fn(n.dataset); }));
@@ -79,7 +80,8 @@ function picker(evs) {
     ['Tanpa tanggal', evs.filter((e) => !e.start)],
   ].filter(([, list]) => list.length);
   const item = (e) => { const m = evMeta(e);
-    return `<button class="evrow ${e.id === st.ev ? 'active' : ''}" data-ev="${e.id}"><span class="t">${esc(e.name)} ${m.badges}</span><span class="m">${esc(m.range)}${m.when ? ' · <b>' + m.when + '</b>' : ''}${Number(e.budget) ? ' · ' + fmtIDR(e.budget) : ''}</span></button>`; };
+    return `<div class="evrow ${e.id === st.ev ? 'active' : ''}"><button class="evsel" data-ev="${e.id}"><span class="t">${esc(e.name)} ${m.badges}</span><span class="m">${esc(m.range)}${m.when ? ' · <b>' + m.when + '</b>' : ''}${Number(e.budget) ? ' · ' + fmtIDR(e.budget) : ''}</span></button>
+      <button class="evdel" data-evdel="${e.id}" aria-label="Hapus ${esc(e.name)}" title="Hapus">🗑</button></div>`; };
   const m = cur ? evMeta(cur) : null;
   return `<div class="evpick ${st.pick || !cur ? 'open' : ''}">
     <button class="evcur" id="evToggle" aria-expanded="${st.pick || !cur}"><span><span class="t">${cur ? esc(cur.name) + ' ' + m.badges : 'Pilih trip / acara'}</span>${cur ? `<span class="m">${esc(m.range)}${m.when ? ' · ' + m.when : ''}</span>` : ''}</span><span class="cnt">${evs.length} ▾</span></button>
@@ -145,6 +147,19 @@ const nextOrder = (list, afterId) => {
   const a = list.find((x) => x.id === afterId), i = list.indexOf(a), n = list[i + 1];
   return n ? (Number(a.order) + Number(n.order)) / 2 : Number(a.order) + 1;
 };
+/** Delete a trip/event with everything planned under it (items, agenda, gear, spending). */
+function deleteEvent(id) {
+  const e = db.get('events', id);
+  if (!e) return false;
+  const kids = ['event_items', 'event_agenda', 'event_gear', 'event_spend'].map((t) => [t, db.where(t, (x) => x.event === id)]);
+  const n = kids.reduce((a, [, rows]) => a + rows.length, 0);
+  if (!confirm(`Hapus "${e.name}"${n ? ` beserta ${n} isi (item, agenda, barang, jajan)` : ''}?` + (M.isLeaveTrip(e) ? '\nPotongan gaji cutinya ikut hilang dari proyeksi.' : ''))) return false;
+  kids.forEach(([t, rows]) => rows.forEach((x) => db.del(t, x.id)));
+  db.del('events', id);
+  if (st.ev === id) st.ev = null;
+  toast('Dihapus ✓');
+  return true;
+}
 function editEvent(id) {
   const e = id ? db.get('events', id) : { id: uid('ev-'), name: '', kind: 'trip', budget: 0, start: todayStr(), end: '', active: 1, note: '' };
   openModal({ title: id ? e.name : 'Trip / acara baru', fields: [{ k: 'name', label: 'Nama', type: 'text', value: e.name },

@@ -36,7 +36,7 @@ export function render(el, S) {
   h += card('Kantong tabungan', M.pocketsList().map((p) => row(esc(p.name), '', `<button class="edit-ico" data-pk="${p.id}">✎</button>`)).join('') + '<button class="btn small ghost" id="addPk">+ kantong</button>');
   const P = db.setting('incomeSim', {});
   h += card('Parameter', row('Siklus mulai tanggal', 'gaji pertama', String(db.setting('cycleStartDay', 15))) + row('Simulasi gaji', `pokok ${fmtIDR(P.basicBase)} · MA ${fmtIDR(P.ma)} · PA ${fmtIDR(P.pa)} · lunch $${P.usdPerDay}/hari`, '') +
-    row('Endpoint harga emas', db.setting('goldEndpoint', '') ? 'terisi' : 'kosong (isi manual)', '') + row('Horizon rencana', '', esc(db.setting('planHorizon', '2029-12'))) +
+    row('Endpoint harga emas', db.setting('goldEndpoint', '') ? 'terisi' : 'kosong (isi manual)', '') + row('Horizon rencana', '', esc(db.setting('planHorizon', '2030-12'))) +
     '<button class="btn small ghost" id="params">Ubah parameter</button>');
   h += card('Tentang', `<div class="note">Izud Finance Hub v${CONFIG.APP_VERSION} · local-first PWA. Semua data di perangkat (IndexedDB) + 1 Google Sheet. <br><button class="btn small ghost danger" id="wipe">Hapus data di perangkat ini</button></div>`);
   el.innerHTML = h;
@@ -118,10 +118,10 @@ function editParams() {
     { k: 'usdRate', label: 'Kurs USD/IDR default', type: 'number', value: P.usdRate }, { k: 'jht', label: 'JHT karyawan (desimal)', type: 'number', value: P.jht },
     { k: 'jp', label: 'JP karyawan (IDR)', type: 'money', value: P.jp }, { k: 'health', label: 'BPJS Kesehatan (IDR)', type: 'money', value: P.health }, { k: 'jkk', label: 'JKK+JKM+BPJS perusahaan (IDR)', type: 'money', value: P.jkk },
     { k: 'gold', label: 'Endpoint harga emas (opsional)', type: 'text', value: db.setting('goldEndpoint', '') },
-    { k: 'horizon', label: 'Horizon rencana', type: 'month', value: db.setting('planHorizon', '2029-12') }],
+    { k: 'horizon', label: 'Horizon rencana', type: 'month', value: db.setting('planHorizon', '2030-12') }],
     onSave: (v) => {
       db.setSetting('cycleStartDay', v.csd || 15); setCycleStartDay(v.csd || 15);
       db.setSetting('incomeSim', { ...P, basicBase: v.basicBase, ma: v.ma, pa: v.pa, usdPerDay: v.usdPerDay, usdRate: v.usdRate, jht: v.jht, jp: v.jp, health: v.health, jkk: v.jkk });
-      db.setSetting('goldEndpoint', v.gold.trim()); db.setSetting('planHorizon', v.horizon || '2029-12'); toast('Tersimpan ✓');
+      db.setSetting('goldEndpoint', v.gold.trim()); db.setSetting('planHorizon', v.horizon || '2030-12'); toast('Tersimpan ✓');
     } });
 }

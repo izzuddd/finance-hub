@@ -415,7 +415,8 @@ export function projectSummary(projectId, option) {
 }
 /** Month-by-month cash-flow forecast of one scenario, including the project, family loan and talangan. */
 export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
-  to = to || db.setting('planHorizon', '2029-12');
+  // plan at least through 2030 (the leave schedule & cash-flow projection run to Dec 2030)
+  to = to || [db.setting('planHorizon', '2030-12'), '2030-12'].sort().pop();
   const sc = db.get('scenarios', scenarioId);
   const rules = db.where('plan_rules', (r) => r.scenario === scenarioId);
   const items = db.where('plan_items', (r) => r.scenario === scenarioId);
@@ -466,6 +467,98 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
   const st1Months = rows.filter((r) => r.month <= stage1End);
   return { scenario: sc, project: ps, rows, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0), loanTotal, repayEach, repayStart, loanMonths: n, stage1End,
     ownFunds: sum(st1Months, (r) => r.net), stage2Done, minBalance: Math.min(...rows.map((r) => r.balance)) };
+}
+
+// ------------------------------------------------------------------ typical budget & cash-flow projection
+// Future cycles that have no budget of their own are projected from the latest budget you set up
+// (2026 pattern): recurring lines only (one-offs that appear in a single cycle are left out), the
+// latest saving targets, income from the plan's salary assumptions (raise each January, THR in the
+// Lebaran cycle) minus the leave-in-Indonesia cut, plus the Lebaran extras from the plan.
+export const activeScenario = () => db.all('scenarios').find((s) => Number(s.active) !== 0) || null;
+const lineKey = (l) => l.panel + '|' + (l.grp || '') + '|' + l.label;
+export function templateCycle(cycle) {
+  return memo('tplc|' + cycle, () => [...new Set(db.all('budget').map((b) => b.cycle))].filter((c) => c <= cycle).sort().pop() || '');
+}
+export function typicalBudget(cycle) {
+  return memo('typ|' + cycle, () => {
+    const src = templateCycle(cycle);
+    const recent = [...new Set(db.all('budget').map((b) => b.cycle))].filter((c) => c <= src).sort().slice(-12);
+    const seen = {};
+    db.all('budget').filter((b) => recent.includes(b.cycle)).forEach((b) => { (seen[lineKey(b)] = seen[lineKey(b)] || new Set()).add(b.cycle); });
+    const lines = src ? budgetLines(src).filter((l) => (seen[lineKey(l)]?.size || 0) >= 2 || recent.length < 2)
+      .map((l) => ({ panel: l.panel, grp: l.grp || '', label: l.label, idr: Number(l.idr) || 0, tl: Number(l.tl) || 0, timing: l.timing || '', payfrom: l.payfrom || '', order: l.order })) : [];
+    const sc = activeScenario();
+    if (sc) db.where('plan_rules', (r) => r.scenario === sc.id && r.freq === 'lebaran' && r.group !== 'income').forEach((r) => {
+      const v = ruleAmount(r, cycle);
+      if (v) lines.push({ panel: 'GIVING', grp: '', label: r.label, idr: Math.round(v), tl: 0, timing: '', payfrom: '', order: 999, extra: true });
+    });
+    const tsrc = [...new Set(db.all('pocket_targets').map((t) => t.cycle))].filter((c) => c <= cycle).sort().pop() || '';
+    const targets = pocketsList().map((p) => { const t = db.get('pocket_targets', tsrc + '|' + p.name) || {};
+      return { pocket: p.name, target: Number(t.target) || 0, timing: t.timing || '', payfrom: t.payfrom || '' }; });
+    const panel = (k) => sum(lines.filter((l) => l.panel === k), (l) => l.idr);
+    return { src, tsrc, lines, targets, needs: panel('NEEDS'), wants: panel('WANTS'), giving: panel('GIVING'), saving: sum(targets, (t) => t.target) };
+  });
+}
+export function projectedIncome(cycle) {
+  return memo('pinc|' + cycle, () => {
+    const P = db.setting('incomeSim', {});
+    const sim = P.basicBase ? simulatePayroll(P, db.setting('terTable', []), { workDays: 21, usdRate: P.usdRate }) : null;
+    const sc = activeScenario();
+    const rules = sc ? db.where('plan_rules', (r) => r.scenario === sc.id && r.group === 'income') : [];
+    let salary = sum(rules.filter((r) => r.freq !== 'lebaran'), (r) => ruleAmount(r, cycle));
+    const thr = sum(rules.filter((r) => r.freq === 'lebaran'), (r) => ruleAmount(r, cycle));
+    if (!salary && sim) salary = sim.takeHome;
+    const lc = leaveCut(cycle);
+    const cut = lc ? lc.cut : 0;
+    const mid0 = sim ? Math.min(sim.mid, salary) : salary / 2;
+    return { mid: Math.round(mid0 - cut), end: Math.round(salary - mid0), thr: Math.round(thr), leaveCut: Math.round(cut), leave: lc, total: Math.round(salary - cut + thr) };
+  });
+}
+/** Write the typical budget (+ projected income lines & saving targets) into an empty cycle. */
+export function applyTypical(cycle) {
+  if (budgetLines(cycle).length) return 0;
+  const T = typicalBudget(cycle);
+  db.putMany('budget', T.lines.map((l, i) => ({ id: 'b-' + cycle + '-t' + i + '-' + Math.random().toString(36).slice(2, 6), cycle, panel: l.panel, grp: l.grp, label: l.label,
+    idr: l.idr, tl: l.tl, paid: 0, timing: l.timing, payfrom: l.payfrom, order: l.order ?? i })));
+  T.targets.forEach((t) => { if (!db.get('pocket_targets', cycle + '|' + t.pocket)) db.put('pocket_targets', { id: cycle + '|' + t.pocket, cycle, pocket: t.pocket, target: t.target, paid: 0, timing: t.timing, payfrom: t.payfrom }); });
+  if (!incomeLines(cycle).length) {
+    const I = projectedIncome(cycle);
+    const inc = [['mid', 'MA + PA (gaji mid)' + (I.leaveCut ? ' − potongan cuti' : ''), I.mid], ['end', 'Payroll minus pajak (gaji end)', I.end], ['thr', 'THR', I.thr]].filter(([, , v]) => v);
+    db.putMany('income', inc.map(([leg, label, amount]) => ({ id: 'inc-' + cycle + '-' + leg, cycle, leg, label, amount, source: 'sim' })));
+  }
+  return T.lines.length;
+}
+/** Month-by-month cash flow to `to` (default Dec 2030): income − budget − talangan, then the room project (Planning Kamar). */
+export function cashflowProjection(scenarioId, { from = currentCycle(), to = '2030-12' } = {}) {
+  return memo('cf|' + scenarioId + '|' + from + '|' + to, () => {
+    const F = scenarioId ? forecast(scenarioId, { from, to }) : null;
+    const fr = {}; (F ? F.rows : []).forEach((r) => { fr[r.month] = r; });
+    const tal = talanganSchedule(from, to);
+    const rows = [];
+    let cum = 0;
+    for (let c = from; c <= to; c = addMonths(c, 1)) {
+      const own = budgetLines(c).length > 0;
+      const T = own ? null : typicalBudget(c);
+      const hasInc = incomeLines(c).length > 0;
+      const I = hasInc ? null : projectedIncome(c);
+      const cb = own ? componentBudgets(c) : null;
+      const hasTargets = pocketsList().some((p) => db.get('pocket_targets', c + '|' + p.name));
+      const r = {
+        month: c, projected: !own, incomeProjected: !hasInc,
+        income: hasInc ? incomeTotal(c) : I.total, thr: hasInc ? incomeLeg(c, 'thr') : I.thr, leaveCut: hasInc ? 0 : I.leaveCut,
+        needs: own ? cb.needs : T.needs, wants: own ? cb.wants : T.wants, giving: own ? cb.giving : T.giving,
+        saving: own || hasTargets ? (cb ? cb.saving : componentBudgets(c).saving) : T.saving,
+        talangan: sum(tal[c] || [], (x) => x.amount), talItems: tal[c] || [],
+        kamarOwn: fr[c] ? Math.max(0, (fr[c].cost1 || 0) - (fr[c].draw || 0)) : 0, repay: fr[c] ? fr[c].repay || 0 : 0,
+      };
+      r.budget = r.needs + r.wants + r.giving + r.saving;
+      r.net = r.income - r.budget - r.talangan;
+      r.afterKamar = r.net - r.kamarOwn - r.repay;
+      cum += r.afterKamar; r.cum = cum;
+      rows.push(r);
+    }
+    return { rows, scenario: F?.scenario || null };
+  });
 }
 
 // RINGKASAN tab for the spreadsheet (plain values)
