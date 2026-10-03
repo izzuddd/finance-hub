@@ -441,12 +441,15 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     // part of the advance is our own money paid back on a fixed schedule (e.g. 10 jt over 12 months from Mar 2027)
     const trAmt = Math.min(Number(prj?.trancheAmt) || 0, cap), trStart = prj?.trancheStart || '', trN = Number(prj?.trancheMonths) || 12;
     let trLeft = 0;
+    const fixedStart = prj?.loanRepayStart || '';
     const rows = base.map((b) => {
       const r = { ...b, cost1: 0, draw: 0, repay: 0, pay2: 0 };
       if (ps) due += (ps.byMonth[r.month] || 0) + (r.month === from ? sum(Object.entries(ps.byMonth).filter(([m]) => m < from), ([, v]) => v) : 0);
       bal += r.net;
       r.repayTr = 0;
       if (trAmt && trStart && r.month >= trStart && trLeft > 0.5) { r.repayTr = Math.min(trAmt / trN, trLeft); trLeft -= r.repayTr; bal -= r.repayTr; }
+      // a fixed start month (e.g. Apr 2027) begins repaying even while stage 1 is still being built
+      if (fixedStart && !repayStart && r.month >= fixedStart && loanLeft > 0.5) { repayStart = r.month; repayEach = loanLeft / n; }
       if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; }
       r.repay += r.repayTr;
       if (due > 0.5) {
@@ -461,8 +464,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
       }
       if (!done && due <= 0.5 && r.month >= lastCost) {
         done = r.month;
-        repayStart = [addMonths(done, 1), prj?.loanRepayStart || ''].sort().pop();
-        repayEach = loanLeft / n;
+        if (!fixedStart) { repayStart = addMonths(done, 1); repayEach = loanLeft / n; }
       }
       if (done && rem2 > 0.5 && r.month > done) { r.pay2 = Math.max(0, Math.min(bal, rem2)); rem2 -= r.pay2; bal -= r.pay2; if (rem2 <= 0.5) stage2Done = r.month; }
       r.balance = bal; r.loanLeft = Math.max(loanLeft + trLeft, 0); r.rem1 = Math.max(due, 0); r.rem2 = done ? rem2 : r.rem1;

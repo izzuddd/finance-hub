@@ -89,12 +89,13 @@ function kamarView() {
   const prj = db.all('projects')[0];
   h += collapsible('kRab', `<div class="nm">🧱 RAB kamar<span class="amt">${p ? fmtShort(p.stage1 + p.stage2) + ' · Opsi ' + opt : ''}</span></div>`, projectBody(opt), st.open.kRab);
   if (prj) h += collapsible('kLoan', `<div class="nm">🤝 Skema pinjaman<span class="amt">${esc(prj.lender || '–')} · ${prj.loanMonths || 24} bln</span></div>`,
-    row('Pemberi pinjaman', '', esc(prj.lender || '–')) + row('Tahap 1 selesai', '', cycleLabel(prj.stage1End || '2027-03', true)) +
+    row('Pemberi pinjaman', '', esc(prj.lender || '–')) + row('Tahap 1 lunas (proyeksi)', 'jadwal RAB awal ' + cycleLabel(prj.stage1End || '2027-03', true), F.stage1Done ? cycleLabel(F.stage1Done, true) : '–') +
     row('Batas dana dari ' + esc(prj.lender || 'keluarga'), '', Number(prj.loanMax) ? fmtIDR(prj.loanMax) : 'tanpa batas') +
-    (Number(prj.trancheAmt) ? row('Bagian uang kami', `dicicil ${prj.trancheMonths || 12} bln mulai ${cycleLabel(prj.trancheStart || '2027-03', true)}`, fmtIDR(prj.trancheAmt)) : '') + row('Mulai cicil', 'sebulan setelah tahap 1 lunas', F.repayStart ? cycleLabel(F.repayStart, true) : '–') +
+    (Number(prj.trancheAmt) ? row('Bagian uang kami', `dicicil ${prj.trancheMonths || 12} bln mulai ${cycleLabel(prj.trancheStart || '2027-03', true)}`, fmtIDR(prj.trancheAmt)) : '') + row('Pinjaman mulai dicicil', prj.loanRepayStart ? 'tanggal tetap' : 'sebulan setelah tahap 1 lunas', F.repayStart ? cycleLabel(F.repayStart, true) : '–') +
+    (F.familyLoan ? row('Cicilan pinjaman', `${F.loanMonths} bulan, lunas ${cycleLabel(addMonths(F.repayStart, F.loanMonths - 1), true)}`, fmtIDR(F.repayEach) + '/bln') : '') +
     row('Lama cicilan', '', (prj.loanMonths || 24) + ' bulan') + row('Tambahan / terima kasih', '', (prj.loanMarkupPct || 0) + '%') + row('Tahap lanjutan', '', Number(prj.stage2On) ? 'ikut direncanakan' : 'tidak (fokus tahap 1)') +
     '<button class="btn small ghost" id="editPrj">✎ Ubah proyek & pinjaman</button>', st.open.kLoan);
-  h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong. Pinjaman dicicil ${F.loanMonths} bulan mulai sebulan setelah tahap 1 lunas.</p>
+  h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong. Pinjaman dicicil ${F.loanMonths} bulan mulai ${F.repayStart ? cycleLabel(F.repayStart, true) : 'sebulan setelah tahap 1 lunas'}.</p>
     <p class="insight-p">Pilih Opsi 1 / Opsi 2 di atas. Potongan gaji saat cuti ikut jadwal di Trip & acara. Arus kas bulanan versi budget ada di <b>Budget → Proyeksi cashflow</b>.</p>`, st.open.kHelp);
   return h;
 }
@@ -205,7 +206,7 @@ function editProject() {
     { k: 'contPct', label: 'Kontinjensi (%)', type: 'number', value: p.contPct },
     { k: 'stage1End', label: 'Tahap 1 selesai (bulan)', type: 'month', value: p.stage1End },
     { k: 'lender', label: 'Pinjam ke', type: 'text', value: p.lender },
-    { k: 'loanRepayStart', label: 'Mulai cicil pinjaman', type: 'month', value: p.loanRepayStart },
+    { k: 'loanRepayStart', label: 'Mulai cicil pinjaman (kosong = sebulan setelah tahap 1 lunas)', type: 'month', value: p.loanRepayStart },
     { k: 'loanMonths', label: 'Lama cicilan (bulan)', type: 'number', value: p.loanMonths },
     { k: 'loanMarkupPct', label: 'Tanda terima kasih (%)', type: 'number', value: p.loanMarkupPct || 0 },
     { k: 'loanMax', label: 'Batas dana dari pemberi pinjaman (IDR, kosong = tanpa batas)', type: 'money', value: p.loanMax || '' },
