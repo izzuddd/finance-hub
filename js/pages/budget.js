@@ -157,6 +157,10 @@ function incomeView(c) {
     `<div class="btotal"><span>Total take-home</span><span>${fmtIDR(M.incomeTotal(c))}</span></div>
      <div class="flex2"><button class="btn small ghost" id="addIncome">+ pemasukan lain</button><button class="btn small" id="simBtn">🧮 Simulasi gaji</button></div>
      <div class="note">Mid = gaji tgl 15 (MA + PA + lunch). End = gaji akhir bulan (pokok − pajak). Setelah uang masuk, ✎ lalu isi jumlah <b>aktual</b> — siklus ini dikalibrasi ke angka nyata.</div>`);
+  const L = M.leaveCut(c);
+  if (L && !(p && (Number(p.absent) || Number(p.outDays)))) {
+    h += `<div class="alloc"><div class="row"><b>✈️ Jadwal cuti</b><span></span></div><div class="row"><span>${esc(L.trips.join(', '))}: ${L.absent} hari absen, ${L.outDays} hari di luar Turki → gaji mid siklus ini ±<b class="neg">${fmtIDR(L.cut)}</b> lebih kecil. Buka 🧮 Simulasi gaji — angkanya sudah terisi.</span></div></div>`;
+  }
   if (p) {
     h += card('Data payroll', row('Hari kerja', '', String(p.workDays || '–')) + row('Cuti tidak dibayar', '', String(p.unpaid || 0)) +
       row('Hari absen (lunch tidak dibayar)', '', String(p.absent || 0)) + row('Hari di luar Turki (MA prorata)', '', String(p.outDays || 0)) +
@@ -186,6 +190,8 @@ function simulator(c) {
   const P = db.setting('incomeSim', {});
   const ter = db.setting('terTable', []);
   const p = db.get('payroll', c) || {};
+  const L = M.leaveCut(c); // prefill from the leave schedule when nothing was entered yet
+  const absent0 = p.absent || (L ? L.absent : 0), out0 = p.outDays || (L ? L.outDays : 0);
   const calc = (api) => {
     const v = api.read();
     const r = M.simulatePayroll(P, ter, { workDays: v.workDays || 0, unpaid: v.unpaid || 0, absent: v.absent || 0, outDays: v.outDays || 0, usdRate: v.usdRate || P.usdRate, overtime: v.overtime || 0 });
@@ -196,8 +202,8 @@ function simulator(c) {
   openModal({ title: 'Simulasi gaji — ' + cycleLabel(c, true), sub: 'Model INCOME_SIMUL: MA prorata hari di luar Turki (÷30), lunch USD × hari kerja dibayar, pajak TER gross-up.',
     fields: [
       { k: 'workDays', label: 'Hari kerja (kalender Turki)', type: 'number', value: p.workDays || 21, onchange: (_, a) => (last = calc(a)) },
-      { k: 'absent', label: 'Hari absen / cuti di Indonesia (lunch tidak dibayar)', type: 'number', value: p.absent || 0, onchange: (_, a) => (last = calc(a)) },
-      { k: 'outDays', label: 'Hari di luar Turki (MA prorata)', type: 'number', value: p.outDays || 0, onchange: (_, a) => (last = calc(a)) },
+      { k: 'absent', label: 'Hari absen / cuti di Indonesia (lunch tidak dibayar)', type: 'number', value: absent0, onchange: (_, a) => (last = calc(a)) },
+      { k: 'outDays', label: 'Hari di luar Turki (MA prorata)', type: 'number', value: out0, onchange: (_, a) => (last = calc(a)) },
       { k: 'unpaid', label: 'Cuti tidak dibayar (potong pokok/21)', type: 'number', value: p.unpaid || 0, onchange: (_, a) => (last = calc(a)) },
       { k: 'usdRate', label: 'Kurs USD/IDR', type: 'number', value: p.usdRate || P.usdRate || 18130, onchange: (_, a) => (last = calc(a)) },
       { k: 'overtime', label: 'Lembur (IDR)', type: 'number', value: p.overtime || 0, onchange: (_, a) => (last = calc(a)) },

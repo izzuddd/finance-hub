@@ -21,7 +21,7 @@ export const SCHEMA = {
   loans: ['id', 'date', 'name', 'amount', 'pocket', 'paid', 'paidDate', 'note'],
   gold: ['id', 'date', 'antam', 'ubs', 'galeri', 'note'],
   installments: ['id', 'asset', 'date', 'value', 'paid'],
-  events: ['id', 'name', 'kind', 'budget', 'start', 'end', 'active', 'note'],
+  events: ['id', 'name', 'kind', 'budget', 'start', 'end', 'active', 'note', 'leave'],
   event_items: ['id', 'event', 'agenda', 'item', 'category', 'orderDate', 'price', 'note', 'order'],
   event_agenda: ['id', 'event', 'day', 'date', 'city', 'what', 'where', 'note', 'checked', 'order'],
   event_gear: ['id', 'event', 'place', 'item', 'amount', 'checked', 'what', 'where', 'note', 'order'],

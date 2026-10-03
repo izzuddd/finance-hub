@@ -4,13 +4,13 @@ import * as M from '../model.js';
 import { esc, fmtIDR, todayStr, uid, parseAmount, weekday } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, moneyCls, empty } from '../ui.js';
 
-const st = { ev: null, sub: 'plan' };
+const st = { ev: null, sub: 'plan', pick: false };
 const CATS = ['TRANSPORT', 'HOTEL', 'FOOD', 'OLEH2', 'GIFT', 'OTHER'];
 
 export function render(el, S) {
   const evs = M.events();
-  st.ev = st.ev && db.get('events', st.ev) ? st.ev : (evs.find((e) => Number(e.active)) || evs[0])?.id;
-  let h = `<div class="chips">${evs.map((e) => `<button data-ev="${e.id}" class="${e.id === st.ev ? 'active' : ''}">${esc(e.name)}</button>`).join('')}<button id="newEv">+ baru</button></div>`;
+  st.ev = st.ev && db.get('events', st.ev) ? st.ev : defaultEvent(evs)?.id;
+  let h = picker(evs);
   if (!st.ev) { el.innerHTML = h + empty('Belum ada trip / acara'); $('newEv').onclick = () => editEvent(null); return; }
   const D = M.eventData(st.ev);
   const isTrip = D.ev.kind === 'trip';
@@ -21,7 +21,8 @@ export function render(el, S) {
   if (sub === 'gear') h += gearView(D);
   if (sub === 'jajan') h += jajanView(D);
   el.innerHTML = h;
-  el.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => { st.ev = b.dataset.ev; render(el, S); }));
+  el.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => { st.ev = b.dataset.ev; st.pick = false; render(el, S); }));
+  $('evToggle').onclick = () => { st.pick = !st.pick; render(el, S); };
   $('newEv').onclick = () => editEvent(null);
   bindSeg(el, 'tSeg', (k) => { st.sub = k; render(el, S); });
   const on = (sel, fn) => el.querySelectorAll(sel).forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); fn(n.dataset); }));
@@ -49,6 +50,42 @@ export function render(el, S) {
   }
 }
 
+// Vertical, grouped list of every trip / event: the current one on top, tap to open the full list.
+const fmtD = (s) => (s ? new Date(s + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const nDays = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
+function evMeta(e) {
+  const t = todayStr();
+  const range = e.start ? fmtD(e.start) + (e.end && e.end !== e.start ? ' – ' + fmtD(e.end) : '') : 'tanpa tanggal';
+  const len = e.start && e.end ? ` · ${nDays(e.start, e.end) + 1} hari` : '';
+  let when = '';
+  if (e.start && e.start > t) when = `dalam ${nDays(t, e.start)} hari`;
+  else if (e.start && (!e.end || e.end >= t)) when = 'sedang berjalan';
+  const badges = (M.isLeaveTrip(e) ? '<span class="badge">cuti</span>' : '') + (e.kind === 'gift' ? '<span class="badge">hadiah</span>' : '');
+  return { range: range + len, when, badges };
+}
+// open on what matters now: the trip in progress, else the next one, else the latest past one
+function defaultEvent(evs) {
+  const t = todayStr();
+  return evs.find((e) => e.start && e.start <= t && (!e.end || e.end >= t)) ||
+    evs.filter((e) => e.start && e.start > t).sort((a, b) => (a.start < b.start ? -1 : 1))[0] || evs[0];
+}
+function picker(evs) {
+  const t = todayStr();
+  const cur = evs.find((e) => e.id === st.ev);
+  const groups = [
+    ['Sedang berjalan', evs.filter((e) => e.start && e.start <= t && (!e.end || e.end >= t))],
+    ['Akan datang', evs.filter((e) => e.start && e.start > t).sort((a, b) => (a.start < b.start ? -1 : 1))],
+    ['Selesai', evs.filter((e) => e.end && e.end < t)],
+    ['Tanpa tanggal', evs.filter((e) => !e.start)],
+  ].filter(([, list]) => list.length);
+  const item = (e) => { const m = evMeta(e);
+    return `<button class="evrow ${e.id === st.ev ? 'active' : ''}" data-ev="${e.id}"><span class="t">${esc(e.name)} ${m.badges}</span><span class="m">${esc(m.range)}${m.when ? ' · <b>' + m.when + '</b>' : ''}${Number(e.budget) ? ' · ' + fmtIDR(e.budget) : ''}</span></button>`; };
+  const m = cur ? evMeta(cur) : null;
+  return `<div class="evpick ${st.pick || !cur ? 'open' : ''}">
+    <button class="evcur" id="evToggle" aria-expanded="${st.pick || !cur}"><span><span class="t">${cur ? esc(cur.name) + ' ' + m.badges : 'Pilih trip / acara'}</span>${cur ? `<span class="m">${esc(m.range)}${m.when ? ' · ' + m.when : ''}</span>` : ''}</span><span class="cnt">${evs.length} ▾</span></button>
+    <div class="evlist">${groups.map(([g, list]) => `<div class="grp">${g} · ${list.length}</div>` + list.map(item).join('')).join('')}
+      <button class="btn small ghost" id="newEv">+ Trip / acara baru</button></div></div>`;
+}
 function planView(D) {
   const e = D.ev;
   let h = tiles([tile('Budget', fmtIDR(e.budget), '<button class="edit-ico corner" data-evedit="1">✎</button>'), tile('Rencana', fmtIDR(D.planned)),
@@ -113,8 +150,9 @@ function editEvent(id) {
   openModal({ title: id ? e.name : 'Trip / acara baru', fields: [{ k: 'name', label: 'Nama', type: 'text', value: e.name },
     { k: 'kind', label: 'Jenis', type: 'select', options: [['trip', 'Trip / mudik (agenda, barang, jajan)'], ['gift', 'Hampers / hadiah'], ['other', 'Acara lain']], value: e.kind },
     { k: 'budget', label: 'Budget (IDR)', type: 'money', value: e.budget || '' }, { k: 'start', label: 'Mulai', type: 'date', value: e.start }, { k: 'end', label: 'Selesai', type: 'date', value: e.end },
-    { k: 'active', label: 'Tampilkan sebagai trip aktif', type: 'check', value: !!Number(e.active) }],
-    onSave: (v) => { if (!v.name) throw new Error('Isi nama'); db.put('events', { ...e, ...v, budget: Number(v.budget) || 0, active: v.active ? 1 : 0 }); st.ev = e.id; },
+    { k: 'active', label: 'Tampilkan sebagai trip aktif', type: 'check', value: !!Number(e.active) },
+    { k: 'leave', label: 'Cuti ke Indonesia (gaji: MA prorata & lunch dipotong — masuk proyeksi)', type: 'check', value: M.isLeaveTrip(e) }],
+    onSave: (v) => { if (!v.name) throw new Error('Isi nama'); db.put('events', { ...e, ...v, budget: Number(v.budget) || 0, active: v.active ? 1 : 0, leave: v.leave && v.kind === 'trip' ? 1 : 0 }); st.ev = e.id; },
     onDelete: id ? () => db.del('events', id) : null });
 }
 function editItem(id, D) {

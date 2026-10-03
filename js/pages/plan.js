@@ -53,6 +53,12 @@ function forecastView() {
       tile('Tahap lanjutan', fmtIDR(p.stage2), `<div class="m">${F.stage2Done ? 'lunas ±' + cycleLabel(F.stage2Done, true) : 'belum lunas s/d ' + cycleLabel(rows[rows.length - 1].month, true)}</div>`),
     ], 'two');
   }
+  const cuts = rows.filter((r) => r.leaveCut);
+  if (cuts.length) {
+    h += collapsible('leavecuts', `✈️ Potongan gaji saat cuti ke Indonesia · ${fmtIDR(F.leaveCutTotal)}`,
+      cuts.map((r) => { const L = M.leaveCut(r.month); return row(cycleLabel(r.month, true), `${esc(L.trips.join(', '))} · ${L.absent} hari absen (lunch) · ${L.outDays} hari di luar Turki (MA)`, `<span class="neg">−${fmtIDR(r.leaveCut)}</span>`, '', ` data-month="${r.month}" role="button"`); }).join('') +
+      '<div class="note">Dari jadwal di Trip & acara yang ditandai "cuti ke Indonesia". MA dipotong prorata hari di luar Turki (÷30), lunch USD tidak dibayar di hari kerja yang absen. Hari berangkat & pulang tidak dihitung, potongan masuk di gaji siklus berikutnya (tgl 15) — sama seperti mudik Jul–Agu 2026. Sudah dikurangkan dari proyeksi, pinjaman & tahap lanjutan RAB.</div>', st.open.leavecuts);
+  }
   // tip: talangan that starts during stage 1 competes with the build money (e.g. Libur Lebaran)
   const early = M.talanganOpen().filter((t) => t.start && String(t.start).slice(0, 7) >= currentCycle() && String(t.start).slice(0, 7) <= F.stage1End);
   if (early.length && F.loanTotal > 0) {

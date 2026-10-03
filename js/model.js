@@ -317,6 +317,52 @@ export function eventData(id) {
 // ------------------------------------------------------------------ long-range plan / forecast
 // Lebaran (Idul Fitri) dates → the payroll cycle in which THR & Lebaran giving land.
 const LEBARAN = { 2026: '2026-03-20', 2027: '2027-03-10', 2028: '2028-02-27', 2029: '2029-02-15', 2030: '2030-02-05', 2031: '2031-01-25' };
+// ------------------------------------------------------------------ cuti ke Indonesia → potongan gaji
+// The office follows the Turkish holiday calendar (May 2026 had 16 working days). While in Indonesia:
+//  * meal allowance (MA) is prorated by the days outside Turkey (÷30),
+//  * the USD lunch allowance isn't paid for absent working days.
+// From the Jul–Aug 2026 mudik (28 Jul → 13 Aug: payroll shows 11 absent, 15 days out): the departure
+// and return days don't count, and the cut lands in the NEXT payroll cycle (paid on the 15th).
+const TR_FIXED = ['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29'];
+const KURBAN = { 2026: '2026-05-27', 2027: '2027-05-16', 2028: '2028-05-05', 2029: '2029-04-24', 2030: '2030-04-13', 2031: '2031-04-02' };
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const plusDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDay(d); };
+const inRange = (s, from, days) => from && s >= from && s <= plusDays(from, days - 1);
+/** Turkish public holiday (approx. ±1 day for the bayrams: Ramazan 3 days, Kurban 4 days). */
+export function trHoliday(s) {
+  const y = Number(s.slice(0, 4));
+  return TR_FIXED.includes(s.slice(5)) || inRange(s, LEBARAN[y], 3) || inRange(s, KURBAN[y], 4);
+}
+export const isLeaveTrip = (ev) => ev && ev.kind === 'trip' && (Number(ev.leave) === 1 || ((ev.leave === '' || ev.leave == null) && /^ev-cuti-/.test(ev.id)));
+/** Days that count for payroll, per payroll cycle that pays them: { cycle: { absent, outDays, trips } }. */
+export function leaveDaysByCycle() {
+  return memo('leaveDays', () => {
+    const out = {};
+    for (const ev of db.all('events').filter(isLeaveTrip)) {
+      if (!ev.start || !ev.end || ev.end <= ev.start) continue;
+      for (let d = plusDays(ev.start, 1); d < ev.end; d = plusDays(d, 1)) {
+        const c = addMonths(cycleOf(d), 1);
+        const o = (out[c] = out[c] || { absent: 0, outDays: 0, trips: [] });
+        o.outDays++;
+        const wd = new Date(d + 'T00:00:00').getDay();
+        if (wd !== 0 && wd !== 6 && !trHoliday(d)) o.absent++;
+        if (!o.trips.includes(ev.name)) o.trips.push(ev.name);
+      }
+    }
+    return out;
+  });
+}
+/** Take-home lost in a payroll cycle because of leave in Indonesia (MA prorata + lunch), incl. TER gross-up effect. */
+export function leaveCut(cycle) {
+  const L = leaveDaysByCycle()[cycle];
+  if (!L) return null;
+  const P = db.setting('incomeSim', {});
+  if (!P.ma && !P.usdPerDay) return null;
+  const ter = db.setting('terTable', []);
+  const base = simulatePayroll(P, ter, { workDays: 21, absent: 0, outDays: 0, usdRate: P.usdRate });
+  const less = simulatePayroll(P, ter, { workDays: 21, absent: Math.min(L.absent, 21), outDays: Math.min(L.outDays, 30), usdRate: P.usdRate });
+  return { ...L, cut: Math.max(0, base.takeHome - less.takeHome), maCut: base.ma - less.ma, lunchCut: base.la - less.la };
+}
 export const lebaranCycle = (y) => (LEBARAN[y] ? cycleOf(LEBARAN[y]) : y + '-02');
 export const lebaranDate = (y) => LEBARAN[y] || '';
 
@@ -386,7 +432,10 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     const income = sum(lines.filter((x) => x.r.group === 'income'), (x) => x.v) + sum(items.filter((i) => i.month === m && i.group === 'income'), (i) => i.amount);
     const out = sum(lines.filter((x) => x.r.group !== 'income'), (x) => x.v) + sum(items.filter((i) => i.month === m && i.group !== 'income'), (i) => i.amount);
     const talM = sum(tal[m] || [], (x) => x.amount);
-    rows.push({ month: m, income, out, talangan: talM, net: income - out - talM, lines, talItems: tal[m] || [], cost1: ps ? (ps.byMonth[m] || 0) : 0 });
+    const lc = leaveCut(m);
+    const cut = lc ? lc.cut : 0;
+    if (cut) lines.push({ r: { label: `Potongan cuti ke Indonesia (${lc.absent} hari absen, ${lc.outDays} hari di luar Turki)`, group: 'income' }, v: -cut });
+    rows.push({ month: m, income: income - cut, out, talangan: talM, net: income - cut - out - talM, lines, talItems: tal[m] || [], cost1: ps ? (ps.byMonth[m] || 0) : 0, leaveCut: cut });
   }
   for (const row of rows) {
     const inStage1 = row.month <= stage1End;
@@ -415,7 +464,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     if (!stage2Done && ps && rem2 <= 0.5 && row.month > stage1End) stage2Done = row.month;
   }
   const st1Months = rows.filter((r) => r.month <= stage1End);
-  return { scenario: sc, project: ps, rows, loanTotal, repayEach, repayStart, loanMonths: n, stage1End,
+  return { scenario: sc, project: ps, rows, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0), loanTotal, repayEach, repayStart, loanMonths: n, stage1End,
     ownFunds: sum(st1Months, (r) => r.net), stage2Done, minBalance: Math.min(...rows.map((r) => r.balance)) };
 }
 
