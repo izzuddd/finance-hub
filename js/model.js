@@ -490,7 +490,11 @@ export function typicalBudget(cycle) {
       if (v) lines.push({ panel: 'GIVING', grp: '', label: r.label, idr: Math.round(v), tl: 0, timing: '', payfrom: '', order: 999, extra: true });
     });
     const tsrc = [...new Set(db.all('pocket_targets').map((t) => t.cycle))].filter((c) => c <= cycle).sort().pop() || '';
-    const targets = pocketsList().map((p) => { const t = db.get('pocket_targets', tsrc + '|' + p.name) || {};
+    // per pocket: its own latest target up to this cycle (a one-off change for one pocket, e.g. a THR top-up,
+    // must not reset the other pockets)
+    const byPocket = {};
+    db.all('pocket_targets').forEach((t) => { if (t.cycle <= cycle && (!byPocket[t.pocket] || t.cycle > byPocket[t.pocket].cycle)) byPocket[t.pocket] = t; });
+    const targets = pocketsList().map((p) => { const t = byPocket[p.name] || {};
       return { pocket: p.name, target: Number(t.target) || 0, timing: t.timing || '', payfrom: t.payfrom || '' }; });
     const panel = (k) => sum(lines.filter((l) => l.panel === k), (l) => l.idr);
     return { src, tsrc, lines, targets, needs: panel('NEEDS'), wants: panel('WANTS'), giving: panel('GIVING'), saving: sum(targets, (t) => t.target) };
@@ -595,24 +599,50 @@ export function cashflowProjection(scenarioId, { from = currentCycle(), to = '20
     return { rows, scenario: F?.scenario || null, forecast: F };
   });
 }
-/** A pocket's projected balance: today's balance + monthly target − trips (budget of trips paid from it, in the month they start). */
+// Flights are booked 3–4 months ahead, so a trip doesn't take its money in the month it starts:
+//  * plan items with an order date take their price in that month (ones ordered on/before today are
+//    assumed paid and already out of the pocket balance);
+//  * if a trip has no dated TRANSPORT item yet, tickets are estimated at TICKET_SHARE of the budget,
+//    bought TICKET_LEAD months before departure;
+//  * the rest of the budget is spent in the month of departure.
+export const TICKET_SHARE = 0.4, TICKET_LEAD = 4;
+export function tripSpending(e, from = currentCycle()) {
+  const budget = Number(e.budget) || 0;
+  if (!budget || !e.start) return [];
+  const items = db.where('event_items', (x) => x.event === e.id && x.orderDate && Number(x.price) > 0);
+  const out = [];
+  let dated = 0;
+  const today = todayStr();
+  // ordered on/before today = already paid (and already out of the pocket balance); later = paid that month
+  items.forEach((x) => { dated += Number(x.price); if (x.orderDate > today) out.push({ month: [cycleOf(x.orderDate), from].sort().pop(), amount: Number(x.price), what: x.item, ev: e }); });
+  const go = cycleOf(e.start);
+  if (!items.some((x) => /TRANSPORT/i.test(x.category))) {
+    const tix = Math.max(0, Math.min(budget - dated, budget * TICKET_SHARE));
+    const c = [addMonths(go, -TICKET_LEAD), from].sort().pop();
+    if (tix > 0) { out.push({ month: c, amount: tix, what: 'Tiket (perkiraan, ' + TICKET_LEAD + ' bln sebelum)', ev: e, estimate: true }); dated += tix; }
+  }
+  const rest = Math.max(0, budget - dated);
+  if (rest > 0 && go >= from) out.push({ month: go, amount: rest, what: 'Selama trip', ev: e });
+  return out;
+}
+/** A pocket's projected balance: today's balance + monthly target − trip spending (tickets ahead, the rest at departure). */
 export function pocketPlan(name, { from = currentCycle(), to = '2030-12', trips = true } = {}) {
   return memo('pp|' + name + '|' + from + '|' + to, () => {
     const p = pockets().find((x) => x.name === name);
     let bal = p ? Number(p.actual) || 0 : 0;
     const start = bal;
     const out = {};
-    if (trips) db.all('events').filter((e) => e.kind === 'trip' && Number(e.budget) > 0 && e.start && cycleOf(e.start) >= from).forEach((e) => {
-      const c = cycleOf(e.start); (out[c] = out[c] || []).push(e);
-    });
+    if (trips) db.all('events').filter((e) => e.kind === 'trip' && Number(e.budget) > 0 && e.start && cycleOf(e.start) >= from)
+      .forEach((e) => tripSpending(e, from).forEach((s) => { (out[s.month] = out[s.month] || []).push(s); }));
     const rows = [];
     for (let c = from; c <= to; c = addMonths(c, 1)) {
       const t = db.get('pocket_targets', c + '|' + name);
       const T = typicalBudget(c).targets.find((x) => x.pocket === name);
       const dep = c === from ? 0 : t ? Number(t.target) || 0 : T ? T.target : 0;
-      const spend = sum(out[c] || [], (e) => Number(e.budget) || 0);
+      const spends = out[c] || [];
+      const spend = sum(spends, (x) => x.amount);
       bal += dep - spend;
-      rows.push({ month: c, dep, spend, trips: out[c] || [], balance: bal });
+      rows.push({ month: c, dep, spend, spends, trips: [...new Set(spends.map((x) => x.ev))], balance: bal });
     }
     const low = rows.reduce((m, r) => (!m || r.balance < m.balance ? r : m), null);
     return { name, start, rows, low };
