@@ -420,7 +420,8 @@ export function projectSummary(projectId, option) {
  *   income (assumed salary, THR, minus leave cuts) − Needs/Wants/Giving − saving targets − talangan
  * (the month's own budget, else the typical budget). That cash pays stage 1 as the RAB schedules it;
  * when it runs short the family loan covers the gap up to `loanMax`; beyond that the work simply waits
- * (stage 1 stretches) — no gold is sold. The loan is repaid in `loanMonths` equal parts starting the
+ * (stage 1 stretches) — no gold is sold. The loan is repaid `repayAmount` per month (the number of months
+ * follows from it), or else in `loanMonths` equal parts, starting the
  * month after stage 1 is fully paid (or `loanRepayStart` if later). Stage 2 only when `stage2On` = 1.
  */
 export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
@@ -433,47 +434,40 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     const base = baseCashflow(scenarioId, from, to);
     const cap = prj && Number(prj.loanMax) > 0 ? Number(prj.loanMax) : Infinity;
     const n = Number(prj?.loanMonths) || 24;
+    const perMonth = Number(prj?.repayAmount) || 0; // fixed instalment, e.g. 4.166.667/bln
     const markup = 1 + (Number(prj?.loanMarkupPct) || 0) / 100;
     const stage2On = prj ? Number(prj.stage2On) === 1 : false;
     const lastCost = ps ? Object.keys(ps.byMonth).sort().pop() || from : from;
     let due = ps ? -Math.min(Number(ps.realized) || 0, ps.stage1) : 0; // already paid items reduce what's left
-    let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0;
-    // part of the advance is our own money paid back on a fixed schedule (e.g. 10 jt over 12 months from Mar 2027)
-    const trAmt = Math.min(Number(prj?.trancheAmt) || 0, cap), trStart = prj?.trancheStart || '', trN = Number(prj?.trancheMonths) || 12;
-    let trLeft = 0;
+    let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', repayEnd = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0;
     const fixedStart = prj?.loanRepayStart || '';
     const rows = base.map((b) => {
       const r = { ...b, cost1: 0, draw: 0, repay: 0, pay2: 0 };
       if (ps) due += (ps.byMonth[r.month] || 0) + (r.month === from ? sum(Object.entries(ps.byMonth).filter(([m]) => m < from), ([, v]) => v) : 0);
       bal += r.net;
-      r.repayTr = 0;
-      if (trAmt && trStart && r.month >= trStart && trLeft > 0.5) { r.repayTr = Math.min(trAmt / trN, trLeft); trLeft -= r.repayTr; bal -= r.repayTr; }
       // a fixed start month (e.g. Apr 2027) begins repaying even while stage 1 is still being built
-      if (fixedStart && !repayStart && r.month >= fixedStart && loanLeft > 0.5) { repayStart = r.month; repayEach = loanLeft / n; }
-      if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; }
-      r.repay += r.repayTr;
+      if (fixedStart && !repayStart && r.month >= fixedStart && loanLeft > 0.5) { repayStart = r.month; repayEach = perMonth || loanLeft / n; }
+      if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; repayEnd = r.month; }
       if (due > 0.5) {
         const own = Math.max(0, Math.min(due, bal));
         bal -= own; due -= own; ownFunds += own;
         const draw = due > 0.5 ? Math.min(due, Math.max(0, cap - loan)) : 0;
-        loan += draw; due -= draw;
-        // the first `trAmt` drawn is the own-money tranche (fixed schedule); the rest is the family loan
-        const toTr = Math.max(0, Math.min(draw, trAmt - (loan - draw)));
-        trLeft += toTr; loanLeft += (draw - toTr) * markup;
+        loan += draw; due -= draw; loanLeft += draw * markup;
         r.cost1 = own + draw; r.draw = draw;
       }
       if (!done && due <= 0.5 && r.month >= lastCost) {
         done = r.month;
-        if (!fixedStart) { repayStart = addMonths(done, 1); repayEach = loanLeft / n; }
+        if (!fixedStart) { repayStart = addMonths(done, 1); repayEach = perMonth || loanLeft / n; }
       }
       if (done && rem2 > 0.5 && r.month > done) { r.pay2 = Math.max(0, Math.min(bal, rem2)); rem2 -= r.pay2; bal -= r.pay2; if (rem2 <= 0.5) stage2Done = r.month; }
-      r.balance = bal; r.loanLeft = Math.max(loanLeft + trLeft, 0); r.rem1 = Math.max(due, 0); r.rem2 = done ? rem2 : r.rem1;
+      r.balance = bal; r.loanLeft = Math.max(loanLeft, 0); r.rem1 = Math.max(due, 0); r.rem2 = done ? rem2 : r.rem1;
       cum += r.net; r.cumNet = cum;
       return r;
     });
     const firstOwn = rows.find((r) => r.cost1 - r.draw > 0.5);
-    return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap, tranche: trAmt ? { amount: trAmt, start: trStart, months: trN, each: trAmt / trN } : null,
-      familyLoan: Math.max(0, loan - trAmt), firstOwnMonth: firstOwn ? firstOwn.month : '', repayEach, repayStart: repayStart || prj?.loanRepayStart || '', loanMonths: n,
+    const repayMonths = repayEach ? Math.ceil(loan * markup / repayEach - 1e-9) : n;
+    return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap,
+      familyLoan: loan, firstOwnMonth: firstOwn ? firstOwn.month : '', repayEach, repayStart: repayStart || prj?.loanRepayStart || '', repayEnd, loanMonths: repayMonths,
       stage1End: done || '', stage1Done: done, stage1Waiting: !done, stage2On, stage2Done, ownFunds, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0),
       minBalance: Math.min(...rows.map((r) => r.balance)) };
   });

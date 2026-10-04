@@ -395,7 +395,7 @@ function cashflowView() {
   ]) + '<div class="note">Bulan yang belum punya budget memakai <b>perkiraan</b> dari pola 2026 (ditandai ≈). Pemasukan: asumsi gaji (naik tiap Januari, THR di siklus Lebaran) dikurangi potongan cuti ke Indonesia.</div>');
   const years = groupBy(rows, (r) => r.month.slice(0, 4));
   for (const [y, rs] of Object.entries(years)) {
-    const body = `<div class="tbl"><div class="th"><span>Bln</span><span>Masuk</span><span>Budget</span><span>Talangan</span><span>Kamar</span><span>Sisa</span></div>` +
+    const body = `<div class="tbl"><div class="th"><span>Bln</span><span>Masuk</span><span>Budget</span><span>Talangan</span><span>Kamar</span><span>Sisa yang bisa dipakai</span></div>` +
       rs.map((r) => `<div class="tr" data-cfm="${r.month}" role="button"><span>${cycleLabel(r.month)}${r.projected ? ' ≈' : ''}</span><span>${fmtShort(r.income)}</span><span>${fmtShort(r.budget)}</span>
         <span>${r.talangan ? fmtShort(r.talangan) : ''}</span><span>${r.kamarOwn + r.repay ? fmtShort(r.kamarOwn + r.repay) : ''}</span><span class="${moneyCls(r.afterKamar)}">${fmtShort(r.afterKamar)}</span></div>`).join('') + '</div>';
     h += collapsible('cf' + y, `<div class="nm">${y}<span class="amt">sisa ${fmtShort(sum(rs, (r) => r.afterKamar))}</span></div><div class="pct">${rs.filter((r) => r.afterKamar < -1000).length ? rs.filter((r) => r.afterKamar < -1000).length + ' bln minus' : ''}</div>`, body, st.open['cf' + y] ?? y === currentCycle().slice(0, 4));
