@@ -5,6 +5,7 @@
 // spreadsheet it created — not the rest of your Drive).
 import * as db from './db.js';
 import { CONFIG } from './config.js';
+import * as fb from './fb.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -46,7 +47,7 @@ function loginByRedirect(after) {
 // If Google says the user must interact (signed out, consent withdrawn), we quietly fall back to the
 // yellow dot; a tap then does the normal login.
 let silentBusy = null, silentFailAt = 0;
-const canSilent = () => !viaBridge() && isConnected() && !!clientId() && !!db.getMeta().consented;
+const canSilent = () => !fb.configured() && !viaBridge() && isConnected() && !!clientId() && !!db.getMeta().consented;
 export function silentRenew() {
   if (silentBusy) return silentBusy;
   if (!canSilent() || !navigator.onLine || Date.now() - silentFailAt < 5 * 60000) return Promise.resolve(false);
@@ -115,7 +116,9 @@ function setStatus(state, msg) {
 export const getStatus = () => status;
 export const clientId = () => localStorage.getItem('hub.clientId') || CONFIG.GOOGLE_CLIENT_ID || '';
 export const spreadsheetId = () => db.getMeta().spreadsheetId || '';
-export const isConnected = () => !!spreadsheetId();
+// Firebase (when set up on this device) replaces the Google Sheets sync entirely
+export const viaFirebase = () => fb.configured();
+export const isConnected = () => viaFirebase() || !!spreadsheetId();
 
 function loadGis() {
   if (window.google?.accounts?.oauth2) return Promise.resolve();
@@ -362,6 +365,15 @@ export function syncNow({ interactive = false } = {}) {
     await null;
     try {
       if (!navigator.onLine) { setStatus('offline', 'Offline — perubahan disimpan & dikirim nanti'); return; }
+      if (viaFirebase()) {
+        await fb.ready();
+        if (!fb.signedIn()) { setStatus('auth', 'Login Firebase sekali di Pengaturan (' + db.dirtyCount() + ' perubahan menunggu)'); return; }
+        await fb.sync(setStatus);
+        db.getMeta().lastSync = Date.now(); await db.saveMeta();
+        retries = 0;
+        setStatus('ok', 'Tersinkron (Firebase)');
+        return;
+      }
       if (!viaBridge()) {
         if (!interactive && !hasToken()) await silentRenew();
         if (!interactive && !hasToken()) { setStatus('auth', 'Ketuk titik status untuk login Google & sinkron (' + db.dirtyCount() + ' perubahan menunggu)'); return; }
@@ -386,7 +398,7 @@ export function syncNow({ interactive = false } = {}) {
     } catch (e) {
       setStatus(e.auth ? 'auth' : 'error', e.message || String(e));
       // passing hiccups (busy script, timeout, flaky network): retry by itself, up to 3 times
-      if (!e.auth && retries < 3 && /lock|timeout|terlalu lama|tidak bisa dihubungi|Gagal menghubungi|Google API 5\d\d|rate|quota/i.test(e.message || '')) {
+      if (!e.auth && retries < 3 && /lock|timeout|terlalu lama|tidak bisa dihubungi|Gagal menghubungi|Google API 5\d\d|rate|quota|unavailable|network|koneksi/i.test(e.message || e.code || '')) {
         retries++;
         setTimeout(() => syncNow().catch(() => {}), retries * 15000);
       }
@@ -602,7 +614,7 @@ export function startAutoSync() {
   setInterval(() => document.visibilityState === 'visible' && isConnected() && syncNow().catch(() => {}), 5 * 60 * 1000);
   // fast mode: renew the access ticket BEFORE it runs out, so a sync never waits on Apps Script
   const warm = () => {
-    if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+    if (viaFirebase() || document.visibilityState !== 'visible' || !navigator.onLine) return;
     if (!token || tokenExp - Date.now() < 10 * 60000) {
       if (bridgeDirect()) bridgeToken(true).catch(() => {});
       else silentRenew();
@@ -611,6 +623,7 @@ export function startAutoSync() {
   warm();
   document.addEventListener('visibilitychange', warm);
   setInterval(warm, 60000);
-  if (isConnected()) setStatus('idle', 'Terhubung');
+  if (isConnected()) setStatus('idle', viaFirebase() ? 'Firebase' : 'Terhubung');
 }
+export { fb };
 export const sheetUrl = () => spreadsheetId() ? `https://docs.google.com/spreadsheets/d/${spreadsheetId()}/edit` : '';

@@ -1,7 +1,7 @@
 // Offline-first shell cache. Bump VERSION when deploying new files.
-const VERSION = 'hub-v1.10.0';
+const VERSION = 'hub-v1.11.0';
 const SHELL = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/app.js', 'js/config.js', 'js/db.js', 'js/model.js', 'js/sync.js', 'js/ui.js', 'js/util.js',
+  'js/app.js', 'js/config.js', 'js/db.js', 'js/fb.js', 'js/model.js', 'js/sync.js', 'js/ui.js', 'js/util.js',
   'js/pages/add.js', 'js/pages/budget.js', 'js/pages/insight.js', 'js/pages/plan.js', 'js/pages/saving.js', 'js/pages/settings.js', 'js/pages/trip.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
@@ -10,6 +10,11 @@ self.addEventListener('activate', (e) => {
 // App files: cache first (instant start), refreshed in the background. Google APIs: always network.
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
+  // Firebase SDK files (versioned URLs, never change): cache-first so the app also starts offline
+  if (e.request.method === 'GET' && u.hostname === 'www.gstatic.com' && u.pathname.startsWith('/firebasejs/')) {
+    e.respondWith(caches.open(VERSION).then(async (c) => (await c.match(e.request)) || fetch(e.request).then((r) => { if (r.ok) c.put(e.request, r.clone()); return r; })));
+    return;
+  }
   if (e.request.method !== 'GET' || u.origin !== location.origin) return;
   e.respondWith(caches.open(VERSION).then(async (c) => {
     const hit = await c.match(e.request, { ignoreSearch: true });

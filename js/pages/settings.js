@@ -4,12 +4,25 @@ import * as M from '../model.js';
 import * as sync from '../sync.js';
 import { CONFIG } from '../config.js';
 import { esc, fmtIDR, uid, setCycleStartDay } from '../util.js';
-import { $, toast, openModal, card, row, empty } from '../ui.js';
+import { $, toast, openModal, card, row, empty, collapsible } from '../ui.js';
 
 export function render(el, S) {
   const s = sync.getStatus();
   const last = db.getMeta().lastSync;
-  let h = card('Google Sheets', `
+  const fbOn = sync.viaFirebase();
+  let h = card('Sinkron Firebase (login sekali)', fbOn && sync.fb.signedIn() ? `
+    <div class="syncbox ${s.state}"><b>${esc(s.msg)}</b>${last ? `<div class="m">Terakhir sinkron ${new Date(last).toLocaleString('id-ID')}</div>` : ''}
+    <div class="m">${db.dirtyCount()} perubahan menunggu dikirim · masuk sebagai <b>${esc(sync.fb.email())}</b> · proyek ${esc(sync.fb.config().projectId)}</div></div>
+    <div class="flex2"><button class="btn small" id="fbSync">Sinkron sekarang</button><button class="btn small ghost" id="fbOut">Keluar dari perangkat ini</button></div>
+    <div class="note">Tidak perlu login lagi — sesi tersimpan di perangkat ini dan diperpanjang otomatis. Perubahan dari perangkat lain muncul sendiri saat app terbuka.</div>` : `
+    <div class="note">Login <b>sekali</b> per perangkat, lalu sinkron jalan sendiri selamanya (±0,1 dtk). Panduan: <b>SETUP-FIREBASE.pdf</b>.</div>
+    <label>Konfigurasi Firebase (tempel blok <code>firebaseConfig</code> dari Firebase console)</label>
+    <textarea id="fbCfg" rows="4" placeholder="const firebaseConfig = { apiKey: '…', authDomain: '…', projectId: '…', appId: '…' };">${esc(sync.fb.config() ? JSON.stringify(sync.fb.config()) : '')}</textarea>
+    <label>Email</label><input id="fbMail" type="email" autocomplete="username" inputmode="email">
+    <label>Password</label><input id="fbPass" type="password" autocomplete="current-password">
+    <button class="btn" id="fbIn">Masuk & sinkron</button>
+    ${fbOn ? '<button class="btn small ghost" id="fbForget">Hapus konfigurasi Firebase (kembali ke Google Sheets)</button>' : ''}`);
+  let gs = card('Google Sheets', `
     <div class="syncbox ${s.state}"><b>${esc(s.msg)}</b>${last ? `<div class="m">Terakhir sinkron ${new Date(last).toLocaleString('id-ID')}</div>` : ''}
     <div class="m">${db.dirtyCount()} perubahan menunggu dikirim</div></div>
     ${sync.isConnected() ? `<div class="flex2"><button class="btn small" id="syncNow">Sinkron sekarang</button><a class="btn small ghost" href="${sync.sheetUrl()}" target="_blank" rel="noopener">Buka spreadsheet</a></div>
@@ -20,7 +33,7 @@ export function render(el, S) {
     <div class="note">Lihat SETUP.md langkah 2. Disimpan di perangkat ini saja${CONFIG.GOOGLE_CLIENT_ID ? ' (default dari config.js sudah terisi)' : ''}. Data selalu tersimpan di perangkat dulu — app tetap jalan offline, lalu sinkron otomatis.</div>
     <div class="note">Untuk app di layar utama HP (iPhone), login Google memakai <i>redirect</i>. Daftarkan alamat ini di Google Cloud → Client ID → <b>Authorized redirect URIs</b>: <code style="user-select:all">${esc(sync.redirectUri())}</code></div>`);
   const B = sync.bridge();
-  h += card('Sinkron tanpa login (disarankan untuk iPhone)', B ? `
+  gs += card('Sinkron tanpa login (Apps Script)', B ? `
     <div class="note">Aktif — perangkat tepercaya, tidak perlu login Google. ${sync.bridgeMode() === 'direct'
       ? 'Mode cepat: data langsung ke Google Sheets API.'
       : 'Mode lambat (lewat skrip, ±2-4 dtk). Untuk mode cepat: perbarui skrip ke versi terbaru + Services → tambah Google Sheets API, deploy New version, lalu Matikan & Aktifkan lagi di sini.'}</div>
@@ -29,8 +42,9 @@ export function render(el, S) {
     <label>URL Web app Apps Script (…/exec)</label><input id="brUrl" placeholder="https://script.google.com/macros/s/…/exec">
     <label>Kunci (sama dengan KEY di skrip)</label><input id="brKey" placeholder="minimal 16 karakter">
     <div class="flex2"><button class="btn small ghost" id="brGen">Buat kunci acak</button><button class="btn small" id="brOn">Aktifkan</button></div>`);
+  h += fbOn ? collapsible('oldSync', '<div class="nm">Sinkron lama (Google Sheets)<span class="amt">tidak dipakai</span></div>', gs, false) : gs;
   h += card('Cadangan & impor', `<div class="flex2"><button class="btn small ghost" id="exp">⬇ Ekspor cadangan (JSON)</button><label class="btn small ghost filebtn">⬆ Impor JSON<input type="file" id="imp" accept=".json,application/json"></label></div>
-    <div class="note">Impor = pindahan dari spreadsheet lama (file dari tools/migrate_to_hub.py) atau cadangan. Isi di perangkat ini diganti, lalu dikirim ke Google Sheets kalau terhubung.</div>`);
+    <div class="note">Impor = pindahan dari spreadsheet lama (file dari tools/migrate_to_hub.py) atau cadangan. Isi di perangkat ini diganti, lalu dikirim ke cloud (Firebase / Google Sheets) kalau terhubung.</div>`);
   h += card('Akun / rekening', M.accounts().map((a) => row(esc(a.name), `${a.currency} · ${esc(a.kind)}${a.usable === 0 ? ' · tabungan' : ''}`, `<button class="edit-ico" data-acc="${a.id}">✎</button>`)).join('') + '<button class="btn small ghost fab-add" id="addAcc">+ akun</button>');
   h += card('Kategori', M.categories().map((c) => row(esc(c.name), esc(c.group), `<button class="edit-ico" data-cat="${c.id}">✎</button>`)).join('') + '<button class="btn small ghost fab-add" id="addCat">+ kategori</button>');
   h += card('Kantong tabungan', M.pocketsList().map((p) => row(esc(p.name), '', `<button class="edit-ico" data-pk="${p.id}">✎</button>`)).join('') + '<button class="btn small ghost fab-add" id="addPk">+ kantong</button>');
@@ -59,6 +73,20 @@ export function render(el, S) {
     if (!v) return;
     try { await sync.useSheet(v); toast('Tersambung ke spreadsheet itu ✓'); } catch (e) { toast(e.message, 5000); } render(el, S);
   });
+  on('fbIn', async () => {
+    const b = $('fbIn'); b.disabled = true; b.textContent = 'Masuk…';
+    try {
+      await sync.fb.login($('fbCfg').value, $('fbMail').value, $('fbPass').value);
+      toast('Masuk ✓ — menyinkronkan…');
+      render(el, S);
+      await sync.syncNow({ interactive: true }); toast('Tersinkron ✓');
+    } catch (e) { toast(e.message, 6000); }
+    render(el, S);
+  });
+  on('fbSync', async () => { try { await sync.syncNow({ interactive: true }); toast('Tersinkron ✓'); } catch (e) { toast(e.message, 5000); } render(el, S); });
+  on('fbOut', async () => { if (confirm('Keluar dari Firebase di perangkat ini? Data lokal tetap ada; untuk sinkron lagi perlu login.')) { await sync.fb.logout(); render(el, S); } });
+  on('fbForget', () => { if (confirm('Hapus konfigurasi Firebase di perangkat ini?')) { sync.fb.forget(); render(el, S); } });
+  el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => n.parentElement.classList.toggle('open')));
   on('disc', async () => { if (confirm('Putuskan Google Sheets di perangkat ini? Data lokal tetap ada.')) { await sync.disconnect(); render(el, S); } });
   on('exp', () => {
     const blob = new Blob([JSON.stringify(db.exportAll())], { type: 'application/json' });

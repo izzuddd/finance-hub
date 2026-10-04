@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Setup Sinkron Firebase — Izud Finance Hub</title>
+<style>
+  :root { --ink: #1b2233; --ink2: #4a5468; --ink3: #7b8496; --line: #e3e7ef; --brand: #2f6fed; --soft: #eef3fe; --warn: #b7791f; --warnsoft: #fdf6e7; --good: #18794e; --goodsoft: #e9f7ef; }
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.5; margin: 0; }
+  h1 { font-size: 21pt; margin: 0 0 2mm; letter-spacing: -.3px; }
+  .sub { color: var(--ink2); font-size: 11pt; margin: 0 0 6mm; }
+  h2 { font-size: 13.5pt; margin: 8mm 0 3mm; padding-bottom: 1.5mm; border-bottom: 2px solid var(--brand); break-after: avoid; }
+  h2 .n { display: inline-block; background: var(--brand); color: #fff; border-radius: 6px; padding: 0 7px; margin-right: 6px; font-size: 11pt; }
+  ol { padding-left: 6mm; margin: 2mm 0; } li { margin: 1.3mm 0; }
+  .box { border: 1px solid var(--line); border-radius: 8px; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; }
+  .tip { background: var(--soft); border-color: #cfdcfb; }
+  .warn { background: var(--warnsoft); border-color: #f1dfb4; }
+  .ok { background: var(--goodsoft); border-color: #c4e8d3; }
+  .box b.t { display: block; margin-bottom: 1mm; }
+  code, pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 9.3pt; }
+  code { background: #f1f3f8; padding: 0 4px; border-radius: 4px; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 3mm 4mm; border-radius: 8px; white-space: pre-wrap; break-inside: avoid; margin: 2mm 0; }
+  .ui { font-weight: 600; color: var(--brand); }
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0; font-size: 9.8pt; break-inside: avoid; }
+  th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 1.6mm 2mm; vertical-align: top; }
+  th { background: #f6f8fc; font-weight: 600; }
+  .flow { display: flex; gap: 2mm; align-items: stretch; margin: 3mm 0 1mm; }
+  .flow div { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 2.5mm; text-align: center; font-size: 9.5pt; }
+  .flow div b { display: block; font-size: 10.5pt; }
+  .flow .arr { flex: 0 0 auto; border: 0; align-self: center; color: var(--ink3); font-size: 14pt; padding: 0; }
+  .meta { color: var(--ink3); font-size: 9pt; margin-top: 8mm; border-top: 1px solid var(--line); padding-top: 2mm; }
+  .pb { break-before: page; }
+</style>
+</head>
+<body>
+
+<h1>Setup Sinkron Firebase</h1>
+<p class="sub">Izud Finance Hub v1.11 · login <b>sekali</b> per perangkat, setelah itu sinkron jalan sendiri tanpa login ulang · ±15 menit</p>
+
+<div class="flow">
+  <div><b>Laptop / HP</b>data tersimpan di perangkat (catat langsung, tanpa jeda)</div>
+  <div class="arr">⇄</div>
+  <div><b>Firebase Firestore</b>database cloud gratis, sinkron ±0,1 detik</div>
+  <div class="arr">⇄</div>
+  <div><b>Perangkat lain</b>perubahan muncul sendiri saat app terbuka</div>
+</div>
+
+<div class="box tip"><b class="t">Yang kamu butuhkan</b>
+Akun Google (untuk membuka Firebase console), laptop, HP, file app terbaru dari folder <code>hub/</code>, dan sebuah password baru khusus untuk Finance Hub (minimal 8 karakter, jangan sama dengan password Google).</div>
+
+<h2><span class="n">1</span>Buat proyek Firebase</h2>
+<ol>
+  <li>Buka <b>console.firebase.google.com</b>, login dengan akun Google-mu.</li>
+  <li>Klik <span class="ui">Create a project</span> (Buat proyek). Nama: <code>finance-hub</code> → <span class="ui">Continue</span>.</li>
+  <li>Kalau ditawari Gemini / Google Analytics: <b>matikan</b> (tidak dibutuhkan) → <span class="ui">Create project</span> → tunggu selesai → <span class="ui">Continue</span>.</li>
+</ol>
+
+<h2><span class="n">2</span>Daftarkan app web &amp; salin konfigurasinya</h2>
+<ol>
+  <li>Di halaman <span class="ui">Project Overview</span>, klik ikon <b>&lt;/&gt;</b> (Web).</li>
+  <li>App nickname: <code>Finance Hub</code>. <b>Jangan</b> centang Firebase Hosting → <span class="ui">Register app</span>.</li>
+  <li>Muncul kode berisi blok seperti ini — <b>salin seluruh blok</b> <code>firebaseConfig</code> ke Notes:</li>
+</ol>
+<pre>const firebaseConfig = {
+  apiKey: "AIza…",
+  authDomain: "finance-hub-xxxx.firebaseapp.com",
+  projectId: "finance-hub-xxxx",
+  storageBucket: "finance-hub-xxxx.firebasestorage.app",
+  messagingSenderId: "1234567890",
+  appId: "1:1234567890:web:abc123"
+};</pre>
+<div class="box tip">Blok ini <b>bukan rahasia</b> (hanya alamat proyekmu) — yang melindungi data adalah akun + Rules di langkah 5 &amp; 8. Tetap jangan disebar sembarangan. Bisa dibuka lagi kapan saja: ⚙︎ Project settings → General → Your apps.</div>
+
+<h2><span class="n">3</span>Aktifkan login email + password</h2>
+<ol>
+  <li>Menu kiri <span class="ui">Build → Authentication</span> → <span class="ui">Get started</span>.</li>
+  <li>Tab <span class="ui">Sign-in method</span> → pilih <b>Email/Password</b> → nyalakan saklar <b>pertama</b> (Email/Password). Saklar kedua "Email link (passwordless)" biarkan <b>mati</b> → <span class="ui">Save</span>.</li>
+</ol>
+
+<h2><span class="n">4</span>Buat akunmu (satu akun untuk laptop &amp; HP)</h2>
+<ol>
+  <li>Masih di Authentication, tab <span class="ui">Users</span> → <span class="ui">Add user</span>.</li>
+  <li>Isi email-mu dan password baru khusus Finance Hub → <span class="ui">Add user</span>.</li>
+  <li>Simpan password ini di password manager. Inilah yang diketik <b>sekali</b> di tiap perangkat.</li>
+</ol>
+
+<h2><span class="n">5</span>Kunci pendaftaran akun baru</h2>
+<ol>
+  <li>Authentication → tab <span class="ui">Settings</span> → <span class="ui">User actions</span>.</li>
+  <li><b>Matikan</b> "Enable create (sign-up)" → <span class="ui">Save</span>. Dengan begitu tidak ada orang lain yang bisa membuat akun di proyekmu.</li>
+  <li>Masih di Settings → <span class="ui">Authorized domains</span> → <span class="ui">Add domain</span> → <code>izzuddd.github.io</code> → Add.</li>
+</ol>
+
+<h2 class="pb"><span class="n">6</span>Buat database Firestore</h2>
+<ol>
+  <li>Menu kiri <span class="ui">Build → Firestore Database</span> → <span class="ui">Create database</span>.</li>
+  <li>Kalau ditanya edisi: pilih <b>Standard</b>.</li>
+  <li>Location: pilih yang di <b>Eropa</b>, mis. <code>eur3 (europe)</code> atau <code>europe-west3 (Frankfurt)</code> — paling dekat ke Istanbul. <b>Lokasi tidak bisa diubah</b> setelah dibuat.</li>
+  <li>Pilih <b>Start in production mode</b> → <span class="ui">Create</span>.</li>
+</ol>
+
+<h2><span class="n">7</span>Pastikan database sudah jadi</h2>
+<p>Tunggu sampai halaman Firestore menampilkan tab <span class="ui">Data</span>, <span class="ui">Rules</span>, <span class="ui">Indexes</span>. Tidak perlu membuat collection apa pun — app membuatnya sendiri.</p>
+
+<h2><span class="n">8</span>Pasang Rules (hanya kamu yang bisa baca/tulis)</h2>
+<ol>
+  <li>Firestore → tab <span class="ui">Rules</span> → hapus semua isinya → tempel:</li>
+</ol>
+<pre>rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/rows/{row} {
+      allow read, write: if request.auth != null &amp;&amp; request.auth.uid == uid;
+    }
+  }
+}</pre>
+<ol start="2"><li>Klik <span class="ui">Publish</span>. Selesai di sisi Firebase.</li></ol>
+
+<h2><span class="n">9</span>Update app di GitHub (v1.11.0)</h2>
+<ol>
+  <li>Upload / timpa ke repo: <code>js/fb.js</code> (file <b>baru</b>), <code>js/sync.js</code>, <code>js/pages/settings.js</code>, <code>sw.js</code>, <code>SETUP-FIREBASE.pdf</code>.</li>
+  <li>Edit <code>js/config.js</code> langsung di GitHub → <code>APP_VERSION: '1.11.0'</code> → Commit.</li>
+  <li>Tunggu ±1 menit, buka app, reload 2× → ⚙︎ Pengaturan → bagian <b>Tentang</b> harus <b>v1.11.0</b>.</li>
+</ol>
+<div class="box warn"><b class="t">Jangan upload</b> folder <code>migration/</code> atau file <code>.json</code> cadangan — itu data keuanganmu.</div>
+
+<h2><span class="n">10</span>Hubungkan laptop (perangkat pertama)</h2>
+<ol>
+  <li>Pastikan data di laptop adalah yang <b>paling baru</b>. Kalau ragu: ⚙︎ → <span class="ui">⬆ Impor JSON</span> → pilih <code>migration/last-updated/finance-hub-backup-2026-10-04.json</code>.</li>
+  <li>⚙︎ → kartu <b>Sinkron Firebase (login sekali)</b>:
+    <br>• tempel blok <code>firebaseConfig</code> dari langkah 2
+    <br>• email &amp; password dari langkah 4 → <span class="ui">Masuk &amp; sinkron</span>.</li>
+  <li>Karena cloud masih kosong, laptop mengunggah semua data (±2.250 baris, beberapa detik). Status menjadi <b>Tersinkron (Firebase)</b>.</li>
+</ol>
+
+<h2><span class="n">11</span>Hubungkan HP</h2>
+<ol>
+  <li>Kirim blok <code>firebaseConfig</code> ke HP (AirDrop / Notes).</li>
+  <li>Buka app <b>dari layar utama</b> (bukan Safari biasa — penyimpanannya terpisah) → ⚙︎ → tempel config + email + password → <span class="ui">Masuk &amp; sinkron</span>.</li>
+  <li>HP menarik semua data dari cloud. Data yang hanya ada di HP ikut dikirim ke cloud — tidak ada yang hilang.</li>
+</ol>
+
+<h2><span class="n">12</span>Tes 1 menit</h2>
+<ol>
+  <li>Catat transaksi uji di HP (mis. "tes 1000").</li>
+  <li>Lihat laptop (app terbuka): transaksi muncul sendiri dalam ±1–2 detik, tanpa reload.</li>
+  <li>Hapus transaksi uji dari salah satu perangkat — ikut terhapus di perangkat lain.</li>
+</ol>
+<div class="box ok"><b class="t">Selesai.</b> Mulai sekarang buka app dan langsung pakai — tidak ada login lagi, tidak ada titik kuning tiap jam.</div>
+
+<h2 class="pb">Sehari-hari</h2>
+<table>
+  <tr><th style="width:34%">Pertanyaan</th><th>Jawaban</th></tr>
+  <tr><td>Perlu login lagi kapan?</td><td>Hanya kalau kamu menekan <b>Keluar</b>, mengganti password di Firebase, menghapus app/data browser, atau app layar utama iPhone lama sekali tidak dibuka (iOS bisa membersihkan penyimpanannya). Dipakai rutin → tidak pernah.</td></tr>
+  <tr><td>Kalau offline?</td><td>Tetap catat seperti biasa. Perubahan dikirim otomatis begitu online.</td></tr>
+  <tr><td>Arti titik di header</td><td>Hijau = tersinkron · biru berkedip = sedang sinkron · kuning = belum login di perangkat ini · merah = error (detail di Pengaturan).</td></tr>
+  <tr><td>Google Sheet lama?</td><td>Tidak dipakai lagi; spreadsheet "Izud Finance Hub" tetap ada sebagai arsip. Pengaturan sinkron lama tersimpan di ⚙︎ → "Sinkron lama (Google Sheets)".</td></tr>
+  <tr><td>Cadangan</td><td>Sebulan sekali: ⚙︎ → <b>⬇ Ekspor cadangan (JSON)</b>, simpan di <code>migration/last-updated/</code>.</td></tr>
+  <tr><td>Biaya</td><td>Paket gratis (Spark) Firebase. Pemakaianmu ±ratusan baca/tulis per hari — jauh di bawah kuota harian gratis. Tidak perlu memasukkan kartu kredit.</td></tr>
+</table>
+
+<h2>Kalau ada masalah</h2>
+<table>
+  <tr><th style="width:42%">Pesan di app</th><th>Penyebab &amp; solusi</th></tr>
+  <tr><td>Email atau password salah</td><td>Cek akun di Authentication → Users (langkah 4). Bisa reset password di sana (⋮ → Reset password).</td></tr>
+  <tr><td>Konfigurasi Firebase tidak lengkap</td><td>Tempel <b>seluruh</b> blok <code>firebaseConfig</code> (langkah 2), termasuk apiKey dan projectId.</td></tr>
+  <tr><td>Akses Firestore ditolak</td><td>Rules belum di-Publish atau isinya salah (langkah 8), atau login dengan akun berbeda di perangkat lain.</td></tr>
+  <tr><td>Database Firestore belum dibuat</td><td>Kerjakan langkah 6.</td></tr>
+  <tr><td>Firebase tidak bisa dihubungi</td><td>Koneksi putus — app mencoba lagi otomatis; data tetap aman di perangkat.</td></tr>
+  <tr><td>Login Firebase sekali di Pengaturan</td><td>Perangkat ini belum/tidak lagi login → ⚙︎ → masukkan email &amp; password.</td></tr>
+</table>
+
+<div class="box tip"><b class="t">Keamanan singkat</b>
+Data hanya bisa dibaca/ditulis oleh akunmu (Rules langkah 8). Pendaftaran akun baru dimatikan (langkah 5). Password tidak disimpan oleh app — yang tersimpan hanya sesi login Firebase di perangkat itu. Kalau HP hilang: Firebase console → Authentication → Users → ganti password (sesi lama ikut tidak berlaku saat token diperbarui).</div>
+
+<p class="meta">Izud Finance Hub · panduan setup Firebase · v1.11.0 · Oktober 2026. Tampilan Firebase console bisa sedikit berubah dari waktu ke waktu; nama menu utamanya tetap sama.</p>
+</body>
+</html>
