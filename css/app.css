@@ -89,7 +89,11 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .cal-nav { display: flex; align-items: center; gap: 8px; } .cal-nav .btn { width: 36px; margin: 0; padding: 6px 0; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-bottom: 10px; }
 .cal-h { font-size: 10.5px; color: var(--ink-3); text-align: center; padding: 2px 0; }
-.cal-d { position: relative; min-height: 38px; border-radius: 8px; background: var(--bg); font-size: 12px; padding: 4px 5px; color: var(--ink-2); }
+.cal-d { position: relative; min-height: 38px; border-radius: 8px; background: var(--bg); font-size: 12px; padding: 4px 5px; color: var(--ink-2); border: 0; font-family: inherit; text-align: left; cursor: pointer; }
+.cal-d.sel { box-shadow: inset 0 0 0 2px var(--ink); }
+.cal-dot { position: absolute; right: 5px; bottom: 5px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
+.cal-dot.inline { position: static; display: inline-block; }
+.cal-legend.small { font-size: 10.5px; gap: 4px 10px; }
 .cal-d.empty { background: none; }
 .cal-d.trip { background: var(--brand-soft); background: color-mix(in srgb, var(--brand) 40%, var(--bg)); color: var(--ink); } .cal-d.trip.cur { background: var(--brand); color: #fff; font-weight: 700; }
 .cal-d.today { outline: 2px solid var(--warn); }
@@ -131,12 +135,13 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .empty { color: var(--ink-3); font-size: 13px; padding: 14px 0; text-align: center; }
 
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
-.tiles.two { grid-template-columns: repeat(2, 1fr); }
+.tiles.two { grid-template-columns: repeat(2, 1fr); } .tiles.one { grid-template-columns: 1fr; }
+.btn.newev { width: auto; margin: 0 0 8px auto; padding: 8px 14px; }
 .tile { background: var(--card); border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow); position: relative; min-width: 0; }
 .tile .t { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; }
 .tile .v { font-size: 15.5px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.tiles:not(.two) .tile .v { font-size: clamp(12.5px, 3.5vw, 15.5px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tiles:not(.two) .tile { padding: 10px 9px; }
+.tiles:not(.two):not(.one) .tile .v { font-size: clamp(12.5px, 3.5vw, 15.5px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tiles:not(.two):not(.one) .tile { padding: 10px 9px; }
 .hero { background: linear-gradient(135deg, var(--brand), #6b53e8); color: #fff; border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; }
 .hero .m { color: rgba(255,255,255,.8); } .hero .big { font-size: 28px; font-weight: 800; margin: 2px 0; font-variant-numeric: tabular-nums; }
 .hero .big.neg { color: #ffd2d2; } .hero .big.pos { color: #fff; }

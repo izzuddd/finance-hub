@@ -303,7 +303,7 @@ export function eventData(id) {
   const agenda = db.where('event_agenda', (x) => x.event === id).sort((a, b) => a.order - b.order);
   const gear = db.where('event_gear', (x) => x.event === id).sort((a, b) => a.order - b.order);
   const spend = db.where('event_spend', (x) => x.event === id).sort((a, b) => (a.date < b.date ? 1 : -1));
-  const planned = sum(items, (x) => x.price);
+  const planned = items.length ? sum(items, (x) => x.price) : Number(ev.budget) || 0;
   const available = (Number(ev.budget) || 0) - planned;
   // food/jajan budget = SUMIF(category = "FOOD"): only items whose category is exactly FOOD
   // (not "budget − other items", which also counted leftover room from unbooked non-food items)

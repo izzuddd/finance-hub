@@ -25,7 +25,7 @@ export const SCHEMA = {
   event_items: ['id', 'event', 'agenda', 'item', 'category', 'orderDate', 'price', 'note', 'order'],
   event_agenda: ['id', 'event', 'day', 'date', 'city', 'what', 'where', 'note', 'checked', 'order'],
   event_gear: ['id', 'event', 'place', 'item', 'amount', 'checked', 'what', 'where', 'note', 'order'],
-  event_spend: ['id', 'event', 'date', 'item', 'amount', 'note'],
+  event_spend: ['id', 'event', 'date', 'item', 'amount', 'note', 'category'],
   scenarios: ['id', 'name', 'note', 'active', 'projectOption'],
   plan_rules: ['id', 'scenario', 'label', 'group', 'amount', 'start', 'end', 'freq', 'growth', 'growthPart', 'note', 'active'],
   plan_items: ['id', 'scenario', 'month', 'label', 'group', 'amount', 'note'],
