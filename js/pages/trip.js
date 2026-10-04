@@ -33,7 +33,6 @@ export function render(el, S) {
   bindSeg(el, 'tSeg', (k) => { st.sub = k; render(el, S); });
   el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
   el.querySelectorAll('[data-calmode]').forEach((b) => b.addEventListener('click', () => { st.calMode = b.dataset.calmode; render(el, S); }));
-  el.querySelectorAll('[data-calscope]').forEach((b) => b.addEventListener('click', () => { st.calAll = b.dataset.calscope === 'all'; render(el, S); }));
   el.querySelectorAll('[data-calnav]').forEach((b) => b.addEventListener('click', () => { calNav(Number(b.dataset.calnav)); render(el, S); }));
   el.querySelectorAll('[data-calmonth]').forEach((b) => b.addEventListener('click', () => { st.calMonth = b.dataset.calmonth; st.calMode = 'month'; render(el, S); }));
   el.querySelectorAll('[data-calday]').forEach((b) => b.addEventListener('click', () => { st.calDay = b.dataset.calday; st.calMonth = st.calDay.slice(0, 7); st.calMode = 'day'; render(el, S); }));
@@ -162,7 +161,7 @@ const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const iso = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 const fd = (s) => Number(s.slice(8)) + ' ' + BLN[Number(s.slice(5, 7)) - 1];
 function calData(D) {
-  const evs = st.calAll ? M.events().filter((e) => e.start) : [D.ev];
+  const evs = M.events().filter((e) => e.start); // the calendar always shows every trip
   const trips = evs.filter((e) => e.kind === 'trip' && e.start).map((e) => ({ e, start: e.start, end: e.end || e.start, cur: e.id === D.ev.id }));
   const orders = {}, agenda = {};
   evs.forEach((e) => {
@@ -176,7 +175,7 @@ function calData(D) {
       if (curDate) (agenda[curDate] = agenda[curDate] || []).push({ a, e, head: curDay });
     });
   });
-  return { trips, orders, agenda };
+  return { trips, orders, agenda, curId: D.ev.id };
 }
 function calNav(dir) {
   if (st.calMode === 'year') { st.calYear += dir; return; }
@@ -194,10 +193,14 @@ function monthGrid(y, m, C, mini) {
   for (let d = 1; d <= days; d++) {
     const ds = iso(y, m, d);
     const tr = C.trips.filter((t) => ds >= t.start && ds <= t.end);
-    const busy = (C.orders[ds] || []).length + (C.agenda[ds] || []).length;
+    const od = C.orders[ds] || [];
+    const mine = [...new Set(od.filter((o) => o.e.id === C.curId).map((o) => o.cat))];
+    const others = od.some((o) => o.e.id !== C.curId);
+    const dots = mine.slice(0, 3).map((c) => `<b style="background:${catColor(c)}"></b>`).join('') + (others ? '<b class="other"></b>' : '');
     const cls = ['cal-d', tr.some((t) => t.cur) ? 'trip cur' : tr.length ? 'trip' : '', ds === today ? 'today' : '', ds === st.calDay ? 'sel' : ''].join(' ');
-    cells += mini ? `<div class="${cls}"></div>`
-      : `<button class="${cls}" data-calday="${ds}" aria-label="${fd(ds)}"><span>${d}</span>${busy ? '<i class="cal-dot"></i>' : ''}</button>`;
+    const marks = dots ? `<i class="cal-dots">${dots}</i>` : '';
+    cells += mini ? `<div class="${cls}">${marks}</div>`
+      : `<button class="${cls}" data-calday="${ds}" aria-label="${fd(ds)}"><span>${d}</span>${marks}</button>`;
   }
   return `<div class="cal-grid${mini ? ' mini' : ''}">${cells}</div>`;
 }
@@ -211,9 +214,9 @@ function dayView(C) {
     h += `<h4 class="subh">Itinerary${head && head.day ? ' · ' + esc(head.day) : ''}${head && head.city ? ' · ' + esc(head.city) : ''}</h4>` +
       ag.filter((x) => x.a.what).map((x) => `<div class="chk${Number(x.a.checked) ? ' done' : ''}"><span class="sp"></span><div class="t">${esc(x.a.what)}${x.a.where || x.a.note ? `<div class="m">${[x.a.where, x.a.note].filter(Boolean).map(esc).join(' · ')}</div>` : ''}${st.calAll && tr.length > 1 ? `<div class="m">${esc(x.e.name)}</div>` : ''}</div></div>`).join('');
   }
-  if (od.length) h += '<h4 class="subh">Pemesanan hari ini</h4>' + od.map((o) => row(`<span class="cdot" style="background:${catColor(o.cat)}"></span>${esc(o.x.item)}`, `pesan ${esc(o.cat)}${st.calAll ? ' · ' + esc(o.e.name) : ''}`, fmtIDR(o.x.price))).join('');
+  if (od.length) h += '<h4 class="subh">Pemesanan hari ini</h4>' + od.map((o) => row(`<span class="cdot${o.e.id === C.curId ? '' : ' other'}"${o.e.id === C.curId ? ` style="background:${catColor(o.cat)}"` : ''}></span>${esc(o.x.item)}`, `pesan ${esc(o.cat)}${st.calAll ? ' · ' + esc(o.e.name) : ''}`, fmtIDR(o.x.price))).join('');
   if (!tr.length && !ag.length && !od.length) h += '<div class="note">Tidak ada trip, itinerary, atau pemesanan di hari ini.</div>';
-  const cats = [...new Set(od.map((o) => o.cat))];
+  const cats = [...new Set(od.filter((o) => o.e.id === C.curId).map((o) => o.cat))];
   if (cats.length) h += `<div class="cal-legend">${cats.map((c) => `<span><i class="cdot" style="background:${catColor(c)}"></i>pesan ${esc(c)}</span>`).join('')}</div>`;
   return h;
 }
@@ -225,8 +228,7 @@ function calendarView(D) {
   const [y, m] = st.calMonth.split('-').map(Number);
   const title = st.calMode === 'year' ? String(st.calYear) : st.calMode === 'day'
     ? `${HARI[new Date(st.calDay + 'T00:00:00').getDay()]}, ${fd(st.calDay)} ${st.calDay.slice(0, 4)}` : `${BLN[m - 1]} ${y}`;
-  let body = `<div class="cal-bar"><div class="chips">${[['year', 'Tahunan'], ['month', 'Bulanan'], ['day', 'Harian']].map(([k, l]) => `<button data-calmode="${k}" class="${st.calMode === k ? 'active' : ''}">${l}</button>`).join('')}
-      <button data-calscope="all" class="${st.calAll ? 'active' : ''}">Semua trip</button><button data-calscope="this" class="${!st.calAll ? 'active' : ''}">Trip ini</button></div>
+  let body = `<div class="cal-bar"><div class="chips">${[['year', 'Tahunan'], ['month', 'Bulanan'], ['day', 'Harian']].map(([k, l]) => `<button data-calmode="${k}" class="${st.calMode === k ? 'active' : ''}">${l}</button>`).join('')}</div>
     <div class="cal-nav"><button class="btn small ghost" data-calnav="-1" aria-label="sebelumnya">‹</button><b>${title}</b><button class="btn small ghost" data-calnav="1" aria-label="berikutnya">›</button></div></div>`;
   if (st.calMode === 'year') {
     body += `<div class="cal-year">${BLN.map((b, i) => `<div class="cal-mon"><button class="cal-mt" data-calmonth="${st.calYear}-${String(i + 1).padStart(2, '0')}">${b}</button>${monthGrid(st.calYear, i + 1, C, true)}</div>`).join('')}</div>`;
@@ -239,7 +241,10 @@ function calendarView(D) {
       .map((t) => row(`<span class="cdot trip${t.cur ? ' cur' : ''}"></span>${esc(t.e.name)}`, `${fd(t.start)} – ${fd(t.end)}`, '')).join('');
     body += '<div class="note">Ketuk tanggal untuk melihat itinerary & pemesanan hari itu.</div>';
   }
-  body += `<div class="cal-legend small"><span><i class="cdot trip cur"></i>trip ini</span>${st.calAll ? '<span><i class="cdot trip"></i>trip lain</span>' : ''}<span><i class="cal-dot inline"></i>ada agenda / pesanan</span></div>`;
+  const myCats = [...new Set(Object.values(C.orders).flat().filter((o) => o.e.id === C.curId).map((o) => o.cat))];
+  const otherOrders = Object.values(C.orders).flat().some((o) => o.e.id !== C.curId);
+  body += `<div class="cal-legend small"><span><i class="cdot trip cur"></i>trip ini</span><span><i class="cdot trip"></i>trip lain</span>
+    ${myCats.map((c) => `<span><i class="cdot" style="background:${catColor(c)}"></i>pesan ${esc(c)}</span>`).join('')}${otherOrders ? '<span><i class="cdot other"></i>ada pesanan trip lain</span>' : ''}</div>`;
   return collapsible('tCal', `<div class="nm">📅 Kalender<span class="amt">${title}</span></div>`, body, st.open.tCal);
 }
 function dayInfo(D, v) {
