@@ -39,7 +39,7 @@ function pocketsView() {
   const P = M.pockets();
   const g = M.gold(), tn = M.installments('Tanah');
   let h = tiles([tile('Total kantong', fmtIDR(sum(P, (p) => p.actual))), tile('Aset inti', fmtIDR(g.net + tn.paid), `<div class="m">emas bersih + tanah</div>`)], 'two');
-  h += `<button class="btn ghost" id="addLog">+ Catat setoran / penarikan tabungan</button>`;
+  h += `<button class="btn fab-add ghost" id="addLog">+ Catat setoran / penarikan tabungan</button>`;
   h += card('Kantong — ketuk untuk rincian', P.map((p) => {
     const open = st.open === p.name, isEF = /emergency/i.test(p.name);
     let x = `<div class="comp${open ? ' open' : ''}"><div data-pocket="${esc(p.name)}" role="button" tabindex="0">
@@ -180,7 +180,7 @@ function talanganView() {
   let h = tiles([tile('Talangan aktif', open.length + ' item'), tile('Total sisa utang', fmtIDR(sum(open, (t) => t.sisa))), tile('Cicilan / bln', fmtIDR(sum(open, (t) => t.perMonth)))]);
   h += card('Daftar talangan', all.map((t) => row((t.done ? '✅ ' : '') + esc(t.item) + ` <span class="badge">${esc(t.usage)}</span>`,
     `${fmtIDR(t.harga)} · ${t.duration} bln · ${fmtIDR(t.perMonth)}/bln${t.start ? ' · ' + esc(String(t.start).slice(0, 7)) + ' → ' + esc(t.doneIn) : ''}<br>dibayar ${fmtIDR(t.paidTotal)} (${t.payments.length}×) · sisa <b>${fmtIDR(t.sisa)}</b>`,
-    `<button class="edit-ico" data-tal="${t.id}">✎</button>`, '', t.done ? ' style="opacity:.55"' : '')).join('') + '<button class="btn ghost" id="addTal">+ Talangan baru</button>');
+    `<button class="edit-ico" data-tal="${t.id}">✎</button>`, '', t.done ? ' style="opacity:.55"' : '')).join('') + '<button class="btn fab-add ghost" id="addTal">+ Talangan baru</button>');
   h += '<div class="note">Talangan = kantong yang menalangi dulu, lalu dicicil balik tiap bulan. Cicilan otomatis masuk ke Rencana (proyeksi arus kas).</div>';
   return h;
 }
@@ -226,7 +226,7 @@ function assetsView() {
   h += card('Biaya Safe Deposit Box', row('Jaminan kunci (sekali)', '', fmtIDR(g.sdb.keyFee)) + row(`Sewa tahunan + PPN ${g.sdb.ppnPct}%`, fmtIDR(g.sdb.annualWithPpn) + ' × ' + g.sdb.years + ' th', fmtIDR(g.sdb.annualWithPpn * g.sdb.years)) +
     `<div class="btotal"><span>Total biaya SDB</span><span class="neg">${fmtIDR(g.sdb.total)}</span></div><button class="btn small ghost" id="editSdb">ubah</button>`);
   h += card('Tanah — cicilan', `<div class="note">Dibayar ${fmtIDR(tn.paid)} · sisa ${fmtIDR(tn.unpaid)}</div>` + tn.rows.map((r) => `<div class="chk${Number(r.paid) ? ' done' : ''}"><input type="checkbox" data-instpaid="${r.id}"${Number(r.paid) ? ' checked' : ''}>
-    <div class="t" data-inst="${r.id}">${esc(r.date)}</div><div class="r">${fmtIDR(r.value)}</div></div>`).join('') + '<button class="btn small ghost" id="addInst">+ cicilan</button>');
+    <div class="t" data-inst="${r.id}">${esc(r.date)}</div><div class="r">${fmtIDR(r.value)}</div></div>`).join('') + '<button class="btn fab-add small ghost" id="addInst">+ cicilan</button>');
   return h;
 }
 function addGold(prefill) {
@@ -271,7 +271,7 @@ function loansView() {
   h += card('Pinjaman / piutang', L.list.map((l) => row((Number(l.paid) ? '✅ ' : '') + esc(l.name) + (l.pocket ? ` <span class="badge">${esc(l.pocket)}</span>` : ''),
     `${esc(l.date)}${Number(l.paid) && l.paidDate ? ' · lunas ' + esc(l.paidDate) : ''}${l.note ? ' · ' + esc(l.note) : ''}`,
     `<span class="${moneyCls(l.amount)}">${fmtIDR(l.amount)}</span><button class="edit-ico" data-loan="${l.id}">✎</button>`, '', Number(l.paid) ? ' style="opacity:.55"' : '')).join('') +
-    '<button class="btn ghost" id="addLoan">+ Pinjaman baru</button><div class="note">Negatif = uang keluar (dipinjamkan). Positif = kamu meminjam.</div>');
+    '<button class="btn fab-add ghost" id="addLoan">+ Pinjaman baru</button><div class="note">Negatif = uang keluar (dipinjamkan). Positif = kamu meminjam.</div>');
   h += card('Cek silang: transaksi kategori "Loan"', L.diary.slice(0, 30).map((t) => row(esc(t.desc), `${esc(t.date)} · ${esc(t.account)}`, `<span class="${moneyCls(t.amount)}">${fmtIDR(M.txIDR(t))}</span>`)).join('') || empty('Tidak ada'));
   return h;
 }

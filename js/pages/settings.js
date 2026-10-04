@@ -31,9 +31,9 @@ export function render(el, S) {
     <div class="flex2"><button class="btn small ghost" id="brGen">Buat kunci acak</button><button class="btn small" id="brOn">Aktifkan</button></div>`);
   h += card('Cadangan & impor', `<div class="flex2"><button class="btn small ghost" id="exp">⬇ Ekspor cadangan (JSON)</button><label class="btn small ghost filebtn">⬆ Impor JSON<input type="file" id="imp" accept=".json,application/json"></label></div>
     <div class="note">Impor = pindahan dari spreadsheet lama (file dari tools/migrate_to_hub.py) atau cadangan. Isi di perangkat ini diganti, lalu dikirim ke Google Sheets kalau terhubung.</div>`);
-  h += card('Akun / rekening', M.accounts().map((a) => row(esc(a.name), `${a.currency} · ${esc(a.kind)}${a.usable === 0 ? ' · tabungan' : ''}`, `<button class="edit-ico" data-acc="${a.id}">✎</button>`)).join('') + '<button class="btn small ghost" id="addAcc">+ akun</button>');
-  h += card('Kategori', M.categories().map((c) => row(esc(c.name), esc(c.group), `<button class="edit-ico" data-cat="${c.id}">✎</button>`)).join('') + '<button class="btn small ghost" id="addCat">+ kategori</button>');
-  h += card('Kantong tabungan', M.pocketsList().map((p) => row(esc(p.name), '', `<button class="edit-ico" data-pk="${p.id}">✎</button>`)).join('') + '<button class="btn small ghost" id="addPk">+ kantong</button>');
+  h += card('Akun / rekening', M.accounts().map((a) => row(esc(a.name), `${a.currency} · ${esc(a.kind)}${a.usable === 0 ? ' · tabungan' : ''}`, `<button class="edit-ico" data-acc="${a.id}">✎</button>`)).join('') + '<button class="btn small ghost fab-add" id="addAcc">+ akun</button>');
+  h += card('Kategori', M.categories().map((c) => row(esc(c.name), esc(c.group), `<button class="edit-ico" data-cat="${c.id}">✎</button>`)).join('') + '<button class="btn small ghost fab-add" id="addCat">+ kategori</button>');
+  h += card('Kantong tabungan', M.pocketsList().map((p) => row(esc(p.name), '', `<button class="edit-ico" data-pk="${p.id}">✎</button>`)).join('') + '<button class="btn small ghost fab-add" id="addPk">+ kantong</button>');
   const P = db.setting('incomeSim', {});
   h += card('Parameter', row('Siklus mulai tanggal', 'gaji pertama', String(db.setting('cycleStartDay', 15))) + row('Simulasi gaji', `pokok ${fmtIDR(P.basicBase)} · MA ${fmtIDR(P.ma)} · PA ${fmtIDR(P.pa)} · lunch $${P.usdPerDay}/hari`, '') +
     row('Endpoint harga emas', db.setting('goldEndpoint', '') ? 'terisi' : 'kosong (isi manual)', '') + row('Horizon rencana', '', esc(db.setting('planHorizon', '2030-12'))) +

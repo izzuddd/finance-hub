@@ -91,7 +91,7 @@ function budgetView(c) {
     const body = groups.map((g) => {
       const leavesH = g.items.map(lineRow).join('');
       return g.name ? `<div class="bgrp"><div class="gh"><span>${esc(g.name)}</span><span>${fmtIDR(sum(g.items, (x) => x.idr))}</span></div>${leavesH}</div>` : leavesH;
-    }).join('') + `<button class="btn small ghost" data-addline="${k}">+ baris ${name}</button>`;
+    }).join('') + `<button class="btn fab-add small ghost" data-addline="${k}">+ baris ${name}</button>`;
     h += collapsible(k, `<div class="nm">${name.toUpperCase()}<span class="amt">${fmtIDR(totals[i])}</span></div><div class="pct">${pct(totals[i], allocated)}%</div>`, body, st.open[k]);
   });
   const active = sb.filter((s) => s.value || s.talTotal || s.auto), idle = sb.filter((s) => !(s.value || s.talTotal || s.auto));

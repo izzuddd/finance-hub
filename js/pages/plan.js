@@ -194,7 +194,7 @@ function projectBody(opt) {
       fmtIDR(M.projectCost(x, prj.contPct)), Number(x.realized) ? 'terpakai ' + fmtIDR(x.realized) : '', ` data-pi="${x.id}" role="button"`)).join('');
     body += collapsible('ps' + s, `<div class="nm">${esc(s.replace(/^\d · /, ''))}<span class="amt">${fmtIDR(tot)}</span></div><div class="pct">tahap ${s[0]}</div>`, inner, st.open['ps' + s]);
   }
-  h += `<h4 class="subh">${esc(prj.name)}</h4>${body}<button class="btn small ghost" id="addPi">+ item</button>
+  h += `<h4 class="subh">${esc(prj.name)}</h4>${body}<button class="btn fab-add small ghost" id="addPi">+ item</button>
     <div class="note">Material dan upah tukang dipisah. Tanda "tukang" = harga/upah dari survei tukang. Isi <b>terpakai</b> di tiap item saat sudah dibayar untuk memantau realisasi.</div>`;
   return h;
 }

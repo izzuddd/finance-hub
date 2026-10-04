@@ -2,9 +2,12 @@
 import * as db from '../db.js';
 import * as M from '../model.js';
 import { esc, fmtIDR, todayStr, uid, parseAmount, weekday } from '../util.js';
-import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, moneyCls, empty } from '../ui.js';
+import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, moneyCls, empty, collapsible } from '../ui.js';
 
-const st = { ev: null, sub: 'plan', pick: false };
+const st = { ev: null, sub: 'plan', pick: false, open: { tCal: true }, calMode: 'month', calMonth: '', calYear: 0, calAll: true };
+// one colour per item category, used by the category totals and the calendar marks
+export const CAT_COLOR = { TIKET: '#2f6fed', HOTEL: '#7c5cff', TRANSPORT: '#e8873b', FOOD: '#189a5c', OLEH2: '#e0699b', GIFT: '#d64545', OTHER: '#8a94a6' };
+const catColor = (c) => CAT_COLOR[String(c || 'OTHER').toUpperCase()] || CAT_COLOR.OTHER;
 // trip items are paid from the Travelling pocket (saving domain), never from the daily budget
 const CATS = [['TIKET', 'TIKET — pesawat/kereta pulang-pergi'], ['TRANSPORT', 'TRANSPORT — lokal selama trip'], ['HOTEL', 'HOTEL'], ['FOOD', 'FOOD'], ['OLEH2', 'OLEH2'], ['GIFT', 'GIFT'], ['OTHER', 'OTHER']];
 
@@ -15,10 +18,10 @@ export function render(el, S) {
   if (!st.ev) { el.innerHTML = h + empty('Belum ada trip / acara'); $('newEv').onclick = () => editEvent(null); return; }
   const D = M.eventData(st.ev);
   const isTrip = D.ev.kind === 'trip';
-  h += seg('tSeg', isTrip ? [['plan', 'Rencana'], ['agenda', 'Agenda'], ['gear', 'Barang'], ['jajan', 'Jajan']] : [['plan', 'Daftar']], isTrip ? st.sub : 'plan');
+  h += seg('tSeg', isTrip ? [['plan', 'Rencana'], ['agenda', 'Timeline'], ['gear', 'Perlengkapan Trip'], ['jajan', 'Log Jajan']] : [['plan', 'Daftar']], isTrip ? st.sub : 'plan');
   const sub = isTrip ? st.sub : 'plan';
   if (sub === 'plan') h += planView(D);
-  if (sub === 'agenda') h += agendaView(D);
+  if (sub === 'agenda') h += calendarView(D) + agendaView(D);
   if (sub === 'gear') h += gearView(D);
   if (sub === 'jajan') h += jajanView(D);
   el.innerHTML = h;
@@ -27,6 +30,11 @@ export function render(el, S) {
   el.querySelectorAll('[data-evdel]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); if (deleteEvent(b.dataset.evdel)) { st.pick = true; render(el, S); } }));
   $('newEv').onclick = () => editEvent(null);
   bindSeg(el, 'tSeg', (k) => { st.sub = k; render(el, S); });
+  el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
+  el.querySelectorAll('[data-calmode]').forEach((b) => b.addEventListener('click', () => { st.calMode = b.dataset.calmode; render(el, S); }));
+  el.querySelectorAll('[data-calscope]').forEach((b) => b.addEventListener('click', () => { st.calAll = b.dataset.calscope === 'all'; render(el, S); }));
+  el.querySelectorAll('[data-calnav]').forEach((b) => b.addEventListener('click', () => { calNav(Number(b.dataset.calnav)); render(el, S); }));
+  el.querySelectorAll('[data-calmonth]').forEach((b) => b.addEventListener('click', () => { st.calMonth = b.dataset.calmonth; st.calMode = 'month'; render(el, S); }));
   const on = (sel, fn) => el.querySelectorAll(sel).forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); fn(n.dataset); }));
   on('[data-evedit]', () => editEvent(st.ev));
   on('[data-item]', (d) => editItem(d.item, D));
@@ -91,16 +99,29 @@ function picker(evs) {
 }
 function planView(D) {
   const e = D.ev;
-  let h = tiles([tile('Budget', fmtIDR(e.budget), '<button class="edit-ico corner" data-evedit="1">✎</button>'), tile('Rencana', fmtIDR(D.planned)),
+  let h = tiles([tile('Budget sekarang', fmtIDR(e.budget), '<button class="edit-ico corner" data-evedit="1">✎</button>'), tile('Budget rencana', fmtIDR(D.planned)),
     tile('Sisa budget', `<span class="${moneyCls(D.available)}">${fmtIDR(D.available)}</span>`), tile(e.kind === 'trip' ? 'Untuk makan/jajan' : 'Terpakai', fmtIDR(e.kind === 'trip' ? D.foodBudget : D.planned))], 'two');
+  h += categoryTotals(D);
   let grp = '';
   h += card('Item', D.items.map((it) => {
     let g = '';
     if (it.agenda && it.agenda !== grp) { grp = it.agenda; g = `<div class="grp">${esc(grp)}</div>`; }
     return g + row(esc(it.item) + ` <span class="badge">${esc(it.category)}</span>`, [it.orderDate && 'dipesan ' + it.orderDate, it.note].filter(Boolean).map(esc).join(' · '),
       fmtIDR(it.price) + `<div class="mvs"><button class="mv" data-mv="${it.id}" data-dir="-1" aria-label="naik">↑</button><button class="mv" data-mv="${it.id}" data-dir="1" aria-label="turun">↓</button><button class="edit-ico" data-item="${it.id}">✎</button></div>`);
-  }).join('') + '<button class="btn ghost" id="addItem">+ Item</button>');
+  }).join('') + '<button class="btn ghost fab-add" id="addItem">+ Item</button>');
   return h;
+}
+// Spend per category (FOOD, TIKET, TRANSPORT, HOTEL, OLEH2, GIFT, OTHER): planned total, how much is already booked
+function categoryTotals(D) {
+  if (!D.items.length) return '';
+  const by = {};
+  D.items.forEach((x) => { const c = String(x.category || 'OTHER').toUpperCase(); const o = (by[c] = by[c] || { n: 0, total: 0, booked: 0 }); o.n++; o.total += Number(x.price) || 0; if (x.orderDate) o.booked += Number(x.price) || 0; });
+  const list = Object.entries(by).sort((a, b) => b[1].total - a[1].total);
+  const body = list.map(([c, o]) => `<div class="tx"><div class="l"><div class="d"><span class="cdot" style="background:${catColor(c)}"></span>${esc(c)}</div>
+      <div class="m">${o.n} item · dipesan ${fmtIDR(o.booked)}${o.total - o.booked > 0.5 ? ' · belum ' + fmtIDR(o.total - o.booked) : ' ✓'}</div>
+      <div class="bar"><i style="width:${D.planned ? Math.round(o.total / D.planned * 100) : 0}%;background:${catColor(c)}"></i></div></div>
+      <div class="r"><b>${fmtIDR(o.total)}</b><div class="m">${D.planned ? Math.round(o.total / D.planned * 100) : 0}%</div></div></div>`).join('');
+  return collapsible('tCats', `<div class="nm">Total per kategori<span class="amt">${list.length} kategori</span></div>`, body, st.open.tCats);
 }
 function agendaView(D) {
   let day = '', h = '';
@@ -109,7 +130,7 @@ function agendaView(D) {
     h += `<div class="chk${Number(a.checked) ? ' done' : ''}">${a.day ? `<input type="checkbox" data-agchk="${a.id}"${Number(a.checked) ? ' checked' : ''} aria-label="hari selesai">` : '<span class="sp"></span>'}
       <div class="t">${esc(a.what)}${a.where || a.note ? `<div class="m">${[a.where, a.note].filter(Boolean).map(esc).join(' · ')}</div>` : ''}</div><button class="edit-ico" data-ag="${a.id}">✎</button></div>`;
   });
-  return card('Itinerary — centang hari yang sudah lewat', (h || empty('Kosong')) + '<button class="btn ghost" id="addAg">+ Agenda</button>');
+  return card('Itinerary — centang hari yang sudah lewat', (h || empty('Kosong')) + '<button class="btn ghost fab-add" id="addAg">+ Agenda</button>');
 }
 function gearView(D) {
   let place = '', h = '';
@@ -118,7 +139,68 @@ function gearView(D) {
     const meta = [g.amount && '×' + g.amount, g.what, g.where && g.where !== '-' && 'beli: ' + g.where, g.note].filter(Boolean).map(esc).join(' · ');
     h += `<div class="chk${Number(g.checked) ? ' done' : ''}"><input type="checkbox" data-grchk="${g.id}"${Number(g.checked) ? ' checked' : ''}><div class="t">${esc(g.item)}${meta ? `<div class="m">${meta}</div>` : ''}</div><button class="edit-ico" data-gr="${g.id}">✎</button></div>`;
   });
-  return card('Packing list', (h || empty('Kosong')) + '<button class="btn ghost" id="addGr">+ Barang</button>');
+  return card('Packing list', (h || empty('Kosong')) + '<button class="btn ghost fab-add" id="addGr">+ Barang</button>');
+}
+// ------------------------------------------------------------------ calendar (monthly / yearly)
+// Marks trip days (this trip strong, other trips light) and booking dates of plan items, coloured by category.
+const BLN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const iso = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+function calData(D) {
+  const evs = st.calAll ? M.events().filter((e) => e.start) : [D.ev];
+  const trips = evs.filter((e) => e.kind === 'trip' && e.start).map((e) => ({ e, start: e.start, end: e.end || e.start, cur: e.id === D.ev.id }));
+  const orders = {};
+  evs.forEach((e) => db.where('event_items', (x) => x.event === e.id && x.orderDate).forEach((x) => {
+    (orders[x.orderDate] = orders[x.orderDate] || []).push({ x, e, cat: String(x.category || 'OTHER').toUpperCase() });
+  }));
+  return { trips, orders };
+}
+function calNav(dir) {
+  if (st.calMode === 'year') { st.calYear += dir; return; }
+  const [y, m] = st.calMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + dir, 1);
+  st.calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function monthGrid(y, m, C, mini) {
+  const first = new Date(y, m - 1, 1), days = new Date(y, m, 0).getDate();
+  const lead = (first.getDay() + 6) % 7; // Monday first
+  const today = todayStr();
+  let cells = mini ? '' : ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((d) => `<div class="cal-h">${d}</div>`).join('');
+  for (let i = 0; i < lead; i++) cells += '<div class="cal-d empty"></div>';
+  for (let d = 1; d <= days; d++) {
+    const ds = iso(y, m, d);
+    const tr = C.trips.filter((t) => ds >= t.start && ds <= t.end);
+    const od = C.orders[ds] || [];
+    const cls = ['cal-d', tr.some((t) => t.cur) ? 'trip cur' : tr.length ? 'trip' : '', ds === today ? 'today' : ''].join(' ');
+    const tip = [...tr.map((t) => t.e.name), ...od.map((o) => o.cat + ': ' + o.x.item)].join(' · ');
+    cells += `<div class="${cls}"${tip ? ` title="${esc(tip)}"` : ''}><span>${d}</span>${od.length ? `<i class="cal-dots">${od.slice(0, 3).map((o) => `<b style="background:${catColor(o.cat)}"></b>`).join('')}</i>` : ''}</div>`;
+  }
+  return `<div class="cal-grid${mini ? ' mini' : ''}">${cells}</div>`;
+}
+function calendarView(D) {
+  const C = calData(D);
+  if (!st.calMonth) { const s = D.ev.start && D.ev.start >= todayStr() ? D.ev.start : todayStr(); st.calMonth = s.slice(0, 7); }
+  if (!st.calYear) st.calYear = Number(st.calMonth.slice(0, 4));
+  const [y, m] = st.calMonth.split('-').map(Number);
+  const title = st.calMode === 'year' ? String(st.calYear) : `${BLN[m - 1]} ${y}`;
+  let body = `<div class="cal-bar"><div class="chips"><button data-calmode="month" class="${st.calMode === 'month' ? 'active' : ''}">Bulanan</button><button data-calmode="year" class="${st.calMode === 'year' ? 'active' : ''}">Tahunan</button>
+      <button data-calscope="all" class="${st.calAll ? 'active' : ''}">Semua trip</button><button data-calscope="this" class="${!st.calAll ? 'active' : ''}">Trip ini</button></div>
+    <div class="cal-nav"><button class="btn small ghost" data-calnav="-1" aria-label="sebelumnya">‹</button><b>${title}</b><button class="btn small ghost" data-calnav="1" aria-label="berikutnya">›</button></div></div>`;
+  if (st.calMode === 'year') {
+    body += `<div class="cal-year">${BLN.map((b, i) => `<div class="cal-mon"><button class="cal-mt" data-calmonth="${st.calYear}-${String(i + 1).padStart(2, '0')}">${b}</button>${monthGrid(st.calYear, i + 1, C, true)}</div>`).join('')}</div>`;
+  } else {
+    body += monthGrid(y, m, C, false);
+    const pre = `${y}-${String(m).padStart(2, '0')}`;
+    const tripsM = C.trips.filter((t) => t.start.slice(0, 7) <= pre && t.end.slice(0, 7) >= pre);
+    const ordersM = Object.entries(C.orders).filter(([d]) => d.startsWith(pre)).sort(([a], [b]) => (a < b ? -1 : 1));
+    const fd = (s) => Number(s.slice(8)) + ' ' + BLN[Number(s.slice(5, 7)) - 1];
+    body += tripsM.map((t) => row(`<span class="cdot trip${t.cur ? ' cur' : ''}"></span>${esc(t.e.name)}`, `${fd(t.start)} – ${fd(t.end)}`, '')).join('') +
+      ordersM.map(([d, os]) => os.map((o) => row(`<span class="cdot" style="background:${catColor(o.cat)}"></span>${esc(o.x.item)}`, `${fd(d)} · pesan ${esc(o.cat)}${st.calAll ? ' · ' + esc(o.e.name) : ''}`, fmtIDR(o.x.price))).join('')).join('');
+    if (!tripsM.length && !ordersM.length) body += '<div class="note">Tidak ada trip atau pemesanan di bulan ini.</div>';
+  }
+  const used = [...new Set(Object.values(C.orders).flat().map((o) => o.cat))];
+  body += `<div class="cal-legend"><span><i class="cdot trip cur"></i>trip ini</span>${st.calAll ? '<span><i class="cdot trip"></i>trip lain</span>' : ''}${used.map((c) => `<span><i class="cdot" style="background:${catColor(c)}"></i>pesan ${esc(c)}</span>`).join('')}</div>
+    <div class="note">Tanggal pesan diambil dari item di tab Rencana (isi "tanggal pesan" untuk tiket, hotel, dll.).</div>`;
+  return collapsible('tCal', `<div class="nm">📅 Kalender<span class="amt">${title}</span></div>`, body, st.open.tCal);
 }
 function dayInfo(D, v) {
   const days = D.days;
