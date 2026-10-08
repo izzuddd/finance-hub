@@ -30,7 +30,7 @@ export const SCHEMA = {
   plan_rules: ['id', 'scenario', 'label', 'group', 'amount', 'start', 'end', 'freq', 'growth', 'growthPart', 'note', 'active'],
   plan_items: ['id', 'scenario', 'month', 'label', 'group', 'amount', 'note'],
   projects: ['id', 'name', 'contPct', 'stage1End', 'lender', 'loanRepayStart', 'loanMonths', 'loanMarkupPct', 'note', 'loanMax', 'stage2On', 'trancheAmt', 'trancheStart', 'trancheMonths', 'repayAmount'],
-  project_items: ['id', 'project', 'stage', 'section', 'kind', 'label', 'spec', 'qty', 'unit', 'price', 'month', 'opt1', 'opt2', 'cont', 'source', 'note', 'realized'],
+  project_items: ['id', 'project', 'stage', 'section', 'kind', 'label', 'spec', 'qty', 'unit', 'price', 'month', 'opt1', 'opt2', 'cont', 'source', 'note', 'realized', 'opt3'],
 };
 export const META_COLS = ['_u', '_d'];
 export const TABLES = Object.keys(SCHEMA);

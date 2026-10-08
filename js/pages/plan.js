@@ -95,7 +95,7 @@ function kamarView() {
     row('Tambahan / terima kasih', '', (prj.loanMarkupPct || 0) + '%') + row('Tahap lanjutan', '', Number(prj.stage2On) ? 'ikut direncanakan' : 'tidak (fokus tahap 1)') +
     '<button class="btn small ghost" id="editPrj">✎ Ubah proyek & pinjaman</button>', st.open.kLoan);
   h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong. Pinjaman dicicil ${F.loanMonths} bulan mulai ${F.repayStart ? cycleLabel(F.repayStart, true) : 'sebulan setelah tahap 1 lunas'}.</p>
-    <p class="insight-p">Pilih Opsi 1 / Opsi 2 di atas. Potongan gaji saat cuti ikut jadwal di Trip & acara. Arus kas bulanan versi budget ada di <b>Budget → Proyeksi cashflow</b>.</p>`, st.open.kHelp);
+    <p class="insight-p">Pilih Opsi 1 / 2 / 3 di atas. Potongan gaji saat cuti ikut jadwal di Trip & acara. Arus kas bulanan versi budget ada di <b>Budget → Proyeksi cashflow</b>.</p>`, st.open.kHelp);
   return h;
 }
 // ------------------------------------------------------------------ pocket strategy (one pocket per goal)
@@ -215,7 +215,7 @@ function editProject() {
 }
 function editItem(id) {
   const prj = db.all('projects')[0];
-  const x = id ? db.get('project_items', id) : { id: uid('pi-'), project: prj.id, stage: '1', section: 'LAINNYA', kind: 'material', label: '', spec: '', qty: 1, unit: 'paket', price: 0, month: prj.stage1End, opt1: 1, opt2: 1, cont: 1, source: '', note: '', realized: 0 };
+  const x = id ? db.get('project_items', id) : { id: uid('pi-'), project: prj.id, stage: '1', section: 'LAINNYA', kind: 'material', label: '', spec: '', qty: 1, unit: 'paket', price: 0, month: prj.stage1End, opt1: 1, opt2: 1, opt3: 1, cont: 1, source: '', note: '', realized: 0 };
   openModal({ title: id ? x.label : 'Item RAB baru', sub: x.section,
     fields: [
       { k: 'label', label: 'Uraian', type: 'text', value: x.label },
@@ -228,9 +228,10 @@ function editItem(id) {
       { k: 'month', label: 'Bulan bayar', type: 'month', value: x.month },
       { k: 'opt1', label: 'Masuk Opsi 1', type: 'check', value: !!Number(x.opt1) },
       { k: 'opt2', label: 'Masuk Opsi 2', type: 'check', value: !!Number(x.opt2) },
+      { k: 'opt3', label: 'Masuk Opsi 3', type: 'check', value: !!M.inOpt3(x) },
       { k: 'cont', label: 'Kena kontinjensi', type: 'check', value: !!Number(x.cont) },
       { k: 'realized', label: 'Sudah terpakai (IDR)', type: 'money', value: x.realized || '' },
       { k: 'note', label: 'Catatan / hitungan', type: 'text', value: x.note }],
-    onSave: (v) => { if (!v.label) throw new Error('Isi uraian'); db.put('project_items', { ...x, ...v, opt1: v.opt1 ? 1 : 0, opt2: v.opt2 ? 1 : 0, cont: v.cont ? 1 : 0, realized: Number(v.realized) || 0 }); toast('Tersimpan ✓'); },
+    onSave: (v) => { if (!v.label) throw new Error('Isi uraian'); db.put('project_items', { ...x, ...v, opt1: v.opt1 ? 1 : 0, opt2: v.opt2 ? 1 : 0, opt3: v.opt3 ? 1 : 0, cont: v.cont ? 1 : 0, realized: Number(v.realized) || 0 }); toast('Tersimpan ✓'); },
     onDelete: id ? () => db.del('project_items', id) : null });
 }

@@ -403,11 +403,13 @@ export function talanganSchedule(from, to) {
   }
   return out;
 }
+/** Opsi 3 (added later): rows without their own opt3 value follow opt2. */
+export const inOpt3 = (x) => (x.opt3 === '' || x.opt3 == null ? Number(x.opt2) : Number(x.opt3));
 export function projectCost(it, contPct) { return (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 + (Number(it.cont) ? (Number(contPct) || 0) / 100 : 0)); }
 export function projectSummary(projectId, option) {
   const p = db.get('projects', projectId);
   if (!p) return null;
-  const items = db.where('project_items', (x) => x.project === projectId && (option === 2 ? Number(x.opt2) : Number(x.opt1)));
+  const items = db.where('project_items', (x) => x.project === projectId && (option === 3 ? inOpt3(x) : option === 2 ? Number(x.opt2) : Number(x.opt1)));
   const c = (x) => projectCost(x, p.contPct);
   const s1 = items.filter((x) => String(x.stage) === '1'), s2 = items.filter((x) => String(x.stage) !== '1');
   const byMonth = {};
