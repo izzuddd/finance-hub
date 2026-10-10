@@ -72,7 +72,7 @@ function kamarView() {
     { name: 'Sisa untuk bangun / nabung', color: '#189a5c', values: rows.map((r) => r.net), area: true },
     { name: 'Sisa pinjaman', color: '#d64545', values: rows.map((r) => r.loanLeft) },
     { name: F.stage2On ? 'Sisa biaya tahap 1 / lanjutan' : 'Sisa biaya tahap 1', color: '#c98a12', values: rows.map((r) => r.rem2) },
-  ]) + '<div class="note">Hijau = sisa budget bulan itu (pemasukan − Needs/Wants/Giving − setoran kantong − talangan), sama persis dengan Budget → Proyeksi cashflow. Sisa ini (ditambah modal awal kalau ada) yang membayar tahap 1; kalau kurang, pinjaman menutup sampai batasnya, sisanya menunggu bulan berikutnya.</div>';
+  ]) + '<div class="note">Hijau = sisa budget bulan itu (pemasukan − Needs/Wants/Giving − setoran kantong − talangan), sama persis dengan Budget → Proyeksi cashflow. Sisa ini (ditambah modal awal kalau ada) yang membayar tahap 1 — klik baris bulan di tabel untuk melihat rincian rencana keluar uang bangun kamar; kalau kurang, pinjaman menutup sampai batasnya, sisanya menunggu bulan berikutnya.</div>';
   const years = groupBy(rows, (r) => r.month.slice(0, 4));
   let t = '';
   for (const [y, rs] of Object.entries(years)) {
@@ -173,8 +173,18 @@ function monthDetail(m) {
   const r = F.rows.find((x) => x.month === m);
   const lines = r.lines.map((x) => `${x.r.group === 'income' ? '+' : '−'} ${esc(x.r.label)}: <b>${fmtIDR(x.v)}</b>`).join('<br>');
   const tal = r.talItems.map((x) => `− Talangan ${esc(x.item)}: ${fmtIDR(x.amount)}`).join('<br>');
+  // rencana keluar uang untuk bangun kamar di bulan ini (item RAB tahap 1 yang dijadwalkan bulan ini)
+  const prj = db.all('projects')[0];
+  const its = prj ? M.projectSummary(prj.id, Number(F.scenario?.projectOption) || 1).items.filter((x) => String(x.stage) === '1' && x.month === m) : [];
+  let rab = '';
+  if (its.length) {
+    const tot = sum(its, (x) => M.projectCost(x, prj.contPct));
+    rab = `<hr><b>🧱 Rencana keluar bangun kamar: ${fmtIDR(tot)}</b>` + (r.cost1 + 0.5 < tot && r.month >= currentCycle() ? ` <span class="neg">(terbayar bulan ini ${fmtIDR(r.cost1)}, sisanya menunggu)</span>` : '') +
+      Object.entries(groupBy(its, (x) => x.section)).map(([s, xs]) => `<br><b>${esc(s)}</b> · ${fmtIDR(sum(xs, (x) => M.projectCost(x, prj.contPct)))}<br>` +
+        xs.map((x) => `<span class="m">• ${esc(x.label)}${x.kind === 'upah' ? ' (upah)' : ''}: ${fmtIDR(M.projectCost(x, prj.contPct))}</span>`).join('<br>')).join('');
+  }
   openModal({ title: 'Rincian ' + cycleLabel(m, true), sub: 'Proyeksi skenario ' + esc(F.scenario?.name || ''),
-    fields: [{ k: 'i', type: 'info', value: `${lines}${tal ? '<br>' + tal : ''}<hr><b>Sisa: ${fmtIDR(r.net)}</b>${r.seed ? '<br>+ Modal awal: ' + fmtIDR(r.seed) : ''}${r.cost1 ? '<br>Biaya tahap 1: ' + fmtIDR(r.cost1) : ''}${r.draw ? '<br>Pinjam: ' + fmtIDR(r.draw) : ''}${r.repay ? '<br>Cicil pinjaman: ' + fmtIDR(r.repay) : ''}${r.pay2 ? '<br>Bayar tahap lanjutan: ' + fmtIDR(r.pay2) : ''}<br>Saldo akhir: <b>${fmtIDR(r.balance)}</b>` }] });
+    fields: [{ k: 'i', type: 'info', value: `${lines}${tal ? '<br>' + tal : ''}<hr><b>Sisa: ${fmtIDR(r.net)}</b>${r.seed ? '<br>+ Modal awal: ' + fmtIDR(r.seed) : ''}${r.cost1 ? '<br>Biaya tahap 1: ' + fmtIDR(r.cost1) : ''}${r.draw ? '<br>Pinjam: ' + fmtIDR(r.draw) : ''}${r.repay ? '<br>Cicil pinjaman: ' + fmtIDR(r.repay) : ''}${r.pay2 ? '<br>Bayar tahap lanjutan: ' + fmtIDR(r.pay2) : ''}<br>Saldo akhir: <b>${fmtIDR(r.balance)}</b>${rab}` }] });
 }
 
 // ------------------------------------------------------------------ project RAB
