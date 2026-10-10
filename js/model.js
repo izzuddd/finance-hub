@@ -440,13 +440,16 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     const markup = 1 + (Number(prj?.loanMarkupPct) || 0) / 100;
     const stage2On = prj ? Number(prj.stage2On) === 1 : false;
     const lastCost = ps ? Object.keys(ps.byMonth).sort().pop() || from : from;
+    // modal awal (mis. hasil jual emas lewat Tante Muli): masuk sekali, bukan pinjaman, tidak dicicil
+    const seed = Number(prj?.seedAmount) || 0, seedMonth = seed ? [String(prj.seedMonth || from), from].sort().pop() : '';
     let due = ps ? -Math.min(Number(ps.realized) || 0, ps.stage1) : 0; // already paid items reduce what's left
     let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', repayEnd = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0;
     const fixedStart = prj?.loanRepayStart || '';
+    const r0seed = (m) => (seed && m === seedMonth ? seed : 0);
     const rows = base.map((b) => {
-      const r = { ...b, cost1: 0, draw: 0, repay: 0, pay2: 0 };
+      const r = { ...b, cost1: 0, draw: 0, repay: 0, pay2: 0, seed: r0seed(b.month) };
       if (ps) due += (ps.byMonth[r.month] || 0) + (r.month === from ? sum(Object.entries(ps.byMonth).filter(([m]) => m < from), ([, v]) => v) : 0);
-      bal += r.net;
+      bal += r.net + r.seed;
       // a fixed start month (e.g. Apr 2027) begins repaying even while stage 1 is still being built
       if (fixedStart && !repayStart && r.month >= fixedStart && loanLeft > 0.5) { repayStart = r.month; repayEach = perMonth || loanLeft / n; }
       if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; repayEnd = r.month; }
@@ -469,6 +472,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     const firstOwn = rows.find((r) => r.cost1 - r.draw > 0.5);
     const repayMonths = repayEach ? Math.ceil(loan * markup / repayEach - 1e-9) : n;
     return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap,
+      seed, seedMonth, seedNote: prj?.seedNote || '',
       familyLoan: loan, firstOwnMonth: firstOwn ? firstOwn.month : '', repayEach, repayStart: repayStart || prj?.loanRepayStart || '', repayEnd, loanMonths: repayMonths,
       stage1End: done || '', stage1Done: done, stage1Waiting: !done, stage2On, stage2Done, ownFunds, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0),
       minBalance: Math.min(...rows.map((r) => r.balance)) };
@@ -601,7 +605,7 @@ export function cashflowProjection(scenarioId, { from = currentCycle(), to = '20
     const F = scenarioId ? forecast(scenarioId, { from, to }) : null;
     const rows = (F ? F.rows : baseCashflow(scenarioId, from, to)).map((b) => {
       const r = { ...b, kamarOwn: Math.max(0, (b.cost1 || 0) - (b.draw || 0)), repay: b.repay || 0 };
-      r.afterKamar = r.net - r.kamarOwn - r.repay - (b.pay2 || 0);
+      r.afterKamar = r.net + (b.seed || 0) - r.kamarOwn - r.repay - (b.pay2 || 0);
       return r;
     });
     let cum = 0; rows.forEach((r) => { cum += r.afterKamar; r.cum = cum; });
