@@ -140,3 +140,42 @@ export function lineChart(labels, lines, { height = 180, zero = true } = {}) {
 }
 export const skel = () => '<div class="skel"></div><div class="skel"></div>';
 export const empty = (t) => `<div class="empty">${t}</div>`;
+
+// Calculator bar for amount fields. iOS's decimal keypad (inputmode="decimal") has only digits and
+// one separator, so formulas like 1155.88-240 can't be typed. While such a field is focused, a bar
+// sits just above the keyboard with + − × ÷ ( ) . and a live result; "=" replaces the formula by it.
+export function installCalcBar() {
+  const bar = document.createElement('div');
+  bar.id = 'calcBar'; bar.hidden = true;
+  bar.innerHTML = ['+', '-', '*', '/', '(', ')', '.'].map((k) => `<button type="button" data-k="${k}">${{ '-': '−', '*': '×', '/': '÷' }[k] || k}</button>`).join('')
+    + '<span class="res"></span><button type="button" data-k="=" class="eq">=</button>';
+  document.body.appendChild(bar);
+  const res = bar.querySelector('.res');
+  let el = null;
+  const isAmt = (n) => n && n.tagName === 'INPUT' && n.inputMode === 'decimal';
+  const place = () => { // keep it on top of the keyboard (visualViewport shrinks when the keyboard opens)
+    const vv = window.visualViewport;
+    bar.style.top = vv ? (vv.offsetTop + vv.height - bar.offsetHeight) + 'px' : '';
+  };
+  const preview = () => {
+    const s = el.value.trim();
+    res.textContent = /[+\-*/()]/.test(s.replace(/^-/, '')) ? '= ' + parseAmount(s).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '';
+  };
+  const press = (k) => {
+    if (!el) return;
+    if (k === '=') { const v = parseAmount(el.value); el.value = v ? String(Math.round(v * 100) / 100) : el.value; }
+    else el.setRangeText(k, el.selectionStart ?? el.value.length, el.selectionEnd ?? el.value.length, 'end');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  // act on pointerdown and cancel the default, so the field keeps focus and the keyboard stays open
+  bar.addEventListener('pointerdown', (e) => { e.preventDefault(); const b = e.target.closest('button'); if (b) press(b.dataset.k); });
+  ['mousedown', 'touchstart'].forEach((t) => bar.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener('focusin', (e) => {
+    if (!isAmt(e.target)) return;
+    el = e.target; bar.hidden = false; preview(); place();
+  });
+  document.addEventListener('focusout', () => setTimeout(() => { if (!isAmt(document.activeElement)) { bar.hidden = true; el = null; } }, 0));
+  document.addEventListener('input', (e) => { if (e.target === el) preview(); });
+  window.visualViewport?.addEventListener('resize', () => !bar.hidden && place());
+  window.visualViewport?.addEventListener('scroll', () => !bar.hidden && place());
+}

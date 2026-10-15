@@ -3,7 +3,7 @@ import * as db from './db.js';
 import * as M from './model.js';
 import * as sync from './sync.js';
 import { setCycleStartDay, cycleLabel, currentCycle, fmtIDR } from './util.js';
-import { $, toast, closeModal } from './ui.js';
+import { $, toast, closeModal, installCalcBar } from './ui.js';
 import { CONFIG } from './config.js';
 import * as add from './pages/add.js';
 import * as budget from './pages/budget.js';
@@ -83,6 +83,7 @@ async function boot() {
     await db.replaceAll(data.tables, { markDirty: false });
     setCycleStartDay(db.setting('cycleStartDay', 15));
   }
+  installCalcBar();
   const first = !db.all('transactions').length && !db.all('accounts').length;
   show(first ? 'settings' : (localStorage.getItem('hub.page') || 'add'));
   if (first) toast('Selamat datang! Impor data lama atau hubungkan Google Sheets di sini.', 5000);
