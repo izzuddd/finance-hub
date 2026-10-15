@@ -155,7 +155,11 @@ export function installCalcBar() {
   const isAmt = (n) => n && n.tagName === 'INPUT' && n.inputMode === 'decimal';
   const place = () => { // keep it on top of the keyboard (visualViewport shrinks when the keyboard opens)
     const vv = window.visualViewport;
-    bar.style.top = vv ? (vv.offsetTop + vv.height - bar.offsetHeight) + 'px' : '';
+    // bottom must go 'auto' with top set, or the bar stretches from `top` down to the hidden layout
+    // bottom: a full-screen white box with its buttons behind the keyboard (the iOS "white screen")
+    if (!vv) return;
+    bar.style.bottom = 'auto';
+    bar.style.top = Math.max(0, vv.offsetTop + vv.height - bar.offsetHeight) + 'px';
   };
   const preview = () => {
     const s = el.value.trim();
