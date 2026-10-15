@@ -178,4 +178,10 @@ export function installCalcBar() {
   document.addEventListener('input', (e) => { if (e.target === el) preview(); });
   window.visualViewport?.addEventListener('resize', () => !bar.hidden && place());
   window.visualViewport?.addEventListener('scroll', () => !bar.hidden && place());
+  // iOS home-screen apps: leaving the app with the keyboard open and coming back can leave the page
+  // unpainted (blank white, keyboard still up, bar gone). Close the keyboard when the app is left so
+  // it always comes back in a normal state.
+  const away = () => { const a = document.activeElement; if (a && /^(INPUT|TEXTAREA)$/.test(a.tagName)) a.blur(); bar.hidden = true; el = null; };
+  document.addEventListener('visibilitychange', () => document.hidden && away());
+  window.addEventListener('pagehide', away);
 }
