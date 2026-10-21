@@ -4,7 +4,7 @@ import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, fmtMoney, parseAmount, todayStr, cycleOf, currentCycle, cycleLabel, cyclePeriod, addMonths, uid, sum } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, bar, seg, bindSeg, moneyCls, empty } from '../ui.js';
 
-const st = { kind: 'expense', ovCycle: null, histCycle: null, histAcc: '', histAll: false, draft: {} };
+const st = { kind: 'expense', ovCycle: null, histCycle: null, histAcc: '', histAll: false, histQ: '', draft: {} };
 
 export function render(el, S) {
   const cur = currentCycle();
@@ -26,6 +26,10 @@ export function render(el, S) {
   if (hc) hc.onchange = () => { st.histCycle = hc.value; render(el, S); };
   if (ha) ha.onchange = () => { st.histAcc = ha.value; render(el, S); };
   if (hm) hm.onclick = () => { st.histAll = !st.histAll; render(el, S); };
+  const hq = $('histQ');
+  // update only the list while typing (re-rendering the page would drop focus and close the iOS keyboard)
+  if (hq) hq.oninput = () => { st.histQ = hq.value; const r = histRows(); $('histList').innerHTML = r.html; hm.textContent = r.btn; $('histNote').textContent = r.note;
+    $('histList').querySelectorAll('[data-tx]').forEach((n) => n.addEventListener('click', () => editTx(n.dataset.tx))); };
 }
 
 // ------------------------------------------------------------------ form
@@ -143,17 +147,30 @@ function save(el, S) {
 }
 
 // ------------------------------------------------------------------ history
+// Search: case-insensitive on Keterangan, every word must appear (any order), across all cycles.
+const norm = (x) => String(x || '').toLocaleLowerCase('id-ID');
+function histRows() {
+  const words = norm(st.histQ).split(/\s+/).filter(Boolean);
+  let list = words.length ? db.all('transactions') : M.txOfCycle(st.histCycle);
+  list = M.txSorted(list.filter((t) => (!st.histAcc || t.account === st.histAcc || t.to === st.histAcc)
+    && words.every((w) => norm(t.desc).includes(w))));
+  const total = list.length;
+  if (!st.histAll) list = list.slice(0, 12);
+  return { html: list.length ? list.map(txRow).join('') : empty(words.length ? 'Tidak ada yang cocok' : 'Belum ada transaksi'),
+    btn: st.histAll ? 'Ringkas' : 'Semua (' + total + ')',
+    note: words.length ? total + ' hasil di semua siklus' : '' };
+}
 function history() {
   const cycles = M.cyclesWithData().slice().reverse();
   if (!cycles.includes(st.histCycle)) cycles.unshift(st.histCycle);
-  let list = M.txSorted(M.txOfCycle(st.histCycle)).filter((t) => !st.histAcc || t.account === st.histAcc || t.to === st.histAcc);
-  const total = list.length;
-  if (!st.histAll) list = list.slice(0, 12);
+  const r = histRows();
   return card('Riwayat', `<div class="flex3">
       <select id="histCycle">${cycles.map((c) => `<option value="${c}"${c === st.histCycle ? ' selected' : ''}>${cycleLabel(c, true)}${c === currentCycle() ? ' (sekarang)' : ''}</option>`).join('')}</select>
       <select id="histAcc"><option value="">Semua akun</option>${M.accountNames().map((a) => `<option${a === st.histAcc ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
-      <button class="btn small ghost" id="histMore">${st.histAll ? 'Ringkas' : 'Semua (' + total + ')'}</button></div>
-    ${list.length ? list.map(txRow).join('') : empty('Belum ada transaksi')}`);
+      <button class="btn small ghost" id="histMore">${r.btn}</button></div>
+    <input id="histQ" type="search" placeholder="Cari keterangan, mis. yoga matt" value="${esc(st.histQ)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    <div class="note" id="histNote" style="margin:4px 0 4px">${r.note}</div>
+    <div id="histList">${r.html}</div>`);
 }
 export function txRow(t) {
   const tl = M.isTRY(t.account);
