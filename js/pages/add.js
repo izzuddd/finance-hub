@@ -4,15 +4,14 @@ import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, fmtMoney, parseAmount, todayStr, cycleOf, currentCycle, cycleLabel, cyclePeriod, addMonths, uid, sum } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, bar, seg, bindSeg, moneyCls, empty } from '../ui.js';
 
-const st = { kind: 'expense', ovCycle: null, histCycle: null, histAcc: '', histAll: false, histQ: '', draft: {} };
+const st = { kind: 'expense', histCycle: null, histAcc: '', histAll: false, draft: {} };
 
 export function render(el, S) {
   const cur = currentCycle();
   st.histCycle = st.histCycle || cur;
-  st.ovCycle = st.ovCycle || cur;
   const k = st.kind;
   let h = seg('kindSeg', [['overview', 'Ringkasan'], ['accounts', 'Saldo'], ['expense', 'Keluar'], ['income', 'Masuk'], ['transfer', 'Transfer']], k);
-  if (k === 'overview') h += overview(st.ovCycle);
+  if (k === 'overview') h += overview(cur);
   else if (k === 'accounts') h += balances(cur);
   else h += form(k) + history();
   el.innerHTML = h;
@@ -20,16 +19,10 @@ export function render(el, S) {
   if (k === 'expense' || k === 'income' || k === 'transfer') bindForm(el, S);
   el.querySelectorAll('[data-tx]').forEach((n) => n.addEventListener('click', () => editTx(n.dataset.tx)));
   el.querySelectorAll('[data-rate]').forEach((n) => n.addEventListener('click', () => editRate(n.dataset.rate, Number(n.dataset.rec) || 0)));
-  el.querySelectorAll('[data-ovc]').forEach((b) => b.addEventListener('click', () => {
-    const d = b.dataset.ovc; st.ovCycle = d === '0' ? cur : addMonths(st.ovCycle, Number(d)); render(el, S); }));
   const hc = $('histCycle'), ha = $('histAcc'), hm = $('histMore');
   if (hc) hc.onchange = () => { st.histCycle = hc.value; render(el, S); };
   if (ha) ha.onchange = () => { st.histAcc = ha.value; render(el, S); };
   if (hm) hm.onclick = () => { st.histAll = !st.histAll; render(el, S); };
-  const hq = $('histQ');
-  // update only the list while typing (re-rendering the page would drop focus and close the iOS keyboard)
-  if (hq) hq.oninput = () => { st.histQ = hq.value; const r = histRows(); $('histList').innerHTML = r.html; hm.textContent = r.btn; $('histNote').textContent = r.note;
-    $('histList').querySelectorAll('[data-tx]').forEach((n) => n.addEventListener('click', () => editTx(n.dataset.tx))); };
 }
 
 // ------------------------------------------------------------------ form
@@ -147,30 +140,17 @@ function save(el, S) {
 }
 
 // ------------------------------------------------------------------ history
-// Search: case-insensitive on Keterangan, every word must appear (any order), across all cycles.
-const norm = (x) => String(x || '').toLocaleLowerCase('id-ID');
-function histRows() {
-  const words = norm(st.histQ).split(/\s+/).filter(Boolean);
-  let list = words.length ? db.all('transactions') : M.txOfCycle(st.histCycle);
-  list = M.txSorted(list.filter((t) => (!st.histAcc || t.account === st.histAcc || t.to === st.histAcc)
-    && words.every((w) => norm(t.desc).includes(w))));
-  const total = list.length;
-  if (!st.histAll) list = list.slice(0, 12);
-  return { html: list.length ? list.map(txRow).join('') : empty(words.length ? 'Tidak ada yang cocok' : 'Belum ada transaksi'),
-    btn: st.histAll ? 'Ringkas' : 'Semua (' + total + ')',
-    note: words.length ? total + ' hasil di semua siklus' : '' };
-}
 function history() {
   const cycles = M.cyclesWithData().slice().reverse();
   if (!cycles.includes(st.histCycle)) cycles.unshift(st.histCycle);
-  const r = histRows();
+  let list = M.txSorted(M.txOfCycle(st.histCycle)).filter((t) => !st.histAcc || t.account === st.histAcc || t.to === st.histAcc);
+  const total = list.length;
+  if (!st.histAll) list = list.slice(0, 12);
   return card('Riwayat', `<div class="flex3">
       <select id="histCycle">${cycles.map((c) => `<option value="${c}"${c === st.histCycle ? ' selected' : ''}>${cycleLabel(c, true)}${c === currentCycle() ? ' (sekarang)' : ''}</option>`).join('')}</select>
       <select id="histAcc"><option value="">Semua akun</option>${M.accountNames().map((a) => `<option${a === st.histAcc ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
-      <button class="btn small ghost" id="histMore">${r.btn}</button></div>
-    <input id="histQ" type="search" placeholder="Cari keterangan, mis. yoga matt" value="${esc(st.histQ)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
-    <div class="note" id="histNote" style="margin:4px 0 4px">${r.note}</div>
-    <div id="histList">${r.html}</div>`);
+      <button class="btn small ghost" id="histMore">${st.histAll ? 'Ringkas' : 'Semua (' + total + ')'}</button></div>
+    ${list.length ? list.map(txRow).join('') : empty('Belum ada transaksi')}`);
 }
 export function txRow(t) {
   const tl = M.isTRY(t.account);
@@ -208,15 +188,14 @@ function balances(cur) {
 
 // ------------------------------------------------------------------ overview
 function overview(cur) {
-  const now = cur === currentCycle();
   const s = M.cycleSummary(cur), b = M.componentBudgets(cur), inc = M.incomeTotal(cur) || s.income;
-  let h = `<div class="cyclebar"><button class="btn small ghost" data-ovc="-1">‹</button><div><b>${cycleLabel(cur, true)}${now ? ' (sekarang)' : ''}</b><div class="m">${cyclePeriod(cur)}</div>${now ? '' : '<button class="btn small ghost" data-ovc="0" style="margin:4px 0 0;font-size:12px;padding:2px 10px">ke siklus sekarang</button>'}</div><button class="btn small ghost" data-ovc="1">›</button></div>`;
+  let h = `<div class="note" style="margin:2px 0 8px">Siklus ${cyclePeriod(cur)}</div>`;
   h += tiles([tile('Pemasukan', fmtIDR(inc)), tile('Pengeluaran', fmtIDR(s.totalExpenses)), tile('Sisa', `<span class="${moneyCls(inc - s.totalExpenses)}">${fmtIDR(inc - s.totalExpenses)}</span>`)]);
   const comps = [['Needs', s.needs, b.needs, M.subsOf(cur, 'Needs')], ['Wants', s.wants, b.wants, M.subsOf(cur, 'Wants')], ['Saving', s.saving, b.saving, []], ['Giving', s.giving, b.giving, []]];
   h += card('Budget vs aktual', comps.map(([n, spent, bud, subs]) => `<details class="comp"><summary><div class="row1"><span>${n}</span><span>${fmtIDR(spent)}</span></div>
       <div class="row2"><span>dari ${fmtIDR(bud)}</span><span class="${bud - spent < 0 ? 'neg' : ''}">sisa ${fmtIDR(bud - spent)}</span></div>${bar(spent, bud, bud > 0 && spent > bud)}</summary>
       ${subs.filter((x) => x.spent).map((x) => `<div class="s"><span>${esc(x.name)}</span><span>${fmtIDR(x.spent)}</span></div>`).join('')}</details>`).join(''));
   const recent = M.txSorted(M.txOfCycle(cur)).slice(0, 8);
-  h += card(now ? 'Transaksi terbaru' : 'Transaksi terakhir di siklus ini', recent.length ? recent.map(txRow).join('') : empty('Belum ada'));
+  h += card('Transaksi terbaru', recent.length ? recent.map(txRow).join('') : empty('Belum ada'));
   return h;
 }

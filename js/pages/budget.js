@@ -54,8 +54,6 @@ export function render(el, S) {
   bind('simBtn', () => simulator(c));
   bind('classify', () => classify(c));
   bind('tlBuffer', () => tlBuffer(c));
-  bindCalibrate(el, S, c);
-  bindSeg(el, 'tlMode', (k) => { db.setSetting('tlAnchor', k); st.open.TL = true; render(el, S); });
   bind('saveInit', () => saveInit(c));
   bind('copyNext', () => { const n = addMonths(c, 1); const k = M.copyBudget(c, n, { overwrite: M.budgetLines(n).length > 0 && confirm('Timpa budget ' + cycleLabel(n, true) + '?') }); toast(k ? k + ' baris disalin ke ' + cycleLabel(n, true) + ' ✓' : 'Siklus berikutnya sudah punya budget'); });
   el.querySelectorAll('[data-use]').forEach((n) => n.addEventListener('click', () => { $('ib_' + n.dataset.use).value = n.dataset.v; }));
@@ -141,15 +139,14 @@ function allLeaves(c) {
 function editLine(id, panel, grp) {
   const c = st.cycle;
   const l = id ? db.get('budget', id) : { id: uid('b-'), cycle: c, panel, grp: grp || '', label: '', idr: 0, tl: 0, paid: 0, timing: '', payfrom: '', order: M.panelLines(c, panel).length };
-  const prevRate = budgetRate(c);
+  const prevRate = M.rateFor(addMonths(c, -1)) || M.rateFor(c);
   const groups = [...new Set(M.panelLines(c, l.panel).map((x) => x.grp).filter(Boolean))];
   openModal({ title: id ? l.label : 'Baris budget baru', sub: `${l.panel} · ${cycleLabel(c, true)}`,
     fields: [
       { k: 'label', label: 'Nama', type: 'text', value: l.label },
       { k: 'grp', label: 'Grup (opsional, mis. Food)', type: 'text', value: l.grp, note: groups.length ? 'Grup yang ada: ' + groups.map(esc).join(', ') : '' },
       { k: 'tl', label: 'Jumlah TL (kosongkan kalau IDR)', type: 'number', value: l.tl || '', onchange: (v, api) => { const t = parseAmount(v), r = parseAmount(api.el('rate').value); if (t) api.set('idr', Math.round(t * r)); } },
-      { k: 'rate', label: 'Kurs TL→IDR (budget)', type: 'number', value: prevRate, note: budgetRateNote(c) },
-      { k: 'rateAll', label: 'Terapkan kurs ini ke semua baris TL siklus ini (IDR dihitung ulang = TL × kurs)', type: 'check', value: false },
+      { k: 'rate', label: 'Kurs TL→IDR', type: 'number', value: prevRate, note: 'Default kurs siklus lalu, seperti rumus =kurs×TL di sheet' },
       { k: 'idr', label: 'Jumlah IDR', type: 'number', value: l.idr || '' },
       { k: 'timing', label: 'Dibayar dari gaji', type: 'select', options: [['', '—'], ['mid', 'Mid (tgl 15)'], ['end', 'End (akhir bulan)']], value: l.timing },
       { k: 'payfrom', label: 'Dibayar dari rekening', type: 'select', options: [['', '—'], ['Mandiri', 'Mandiri'], ['Bank Jago', 'Bank Jago'], ['AKBANK', 'AKBANK (TL)']], value: l.payfrom },
@@ -158,10 +155,6 @@ function editLine(id, panel, grp) {
       if (!v.label) throw new Error('Isi nama');
       const idr = v.tl ? Math.round(v.tl * (v.rate || prevRate)) : Number(v.idr) || 0;
       db.put('budget', { ...l, label: v.label, grp: v.grp, tl: Number(v.tl) || 0, idr, timing: v.timing, payfrom: v.payfrom });
-      if (v.rateAll && v.rate) {
-        setBudgetRate(c, { rate: Number(v.rate), src: 'asumsi' });
-        tlLeaves(c).forEach((x) => x.id !== l.id && db.put('budget', { ...x, idr: Math.round(Number(x.tl) * v.rate) }));
-      }
       if (v.spread) db.where('budget', (x) => x.cycle > c && x.panel === l.panel && x.label === l.label).forEach((x) => db.put('budget', { ...x, idr, tl: Number(v.tl) || 0 }));
       toast('Tersimpan ✓ ' + fmtIDR(idr));
     },
@@ -265,22 +258,22 @@ function simulator(c) {
 // ------------------------------------------------------------------ transfer among balances + TL plan
 function transferView(c) {
   const leaves = allLeaves(c);
-  const section = (id, title, payroll, timing) => {
+  const mid = M.incomeLeg(c, 'mid'), end = M.incomeLeg(c, 'end');
+  const section = (title, payroll, timing) => {
     const mand = leaves.filter((l) => l.timing === timing && l.payfrom === 'Mandiri');
     const jago = leaves.filter((l) => l.timing === timing && l.payfrom === 'Bank Jago');
     const tm = sum(mand, (l) => l.idr), tj = sum(jago, (l) => l.idr);
     const tr = payroll - tm, rem = tr - tj;
     const det = (ls) => ls.map((l) => `<div class="s sub"><span>${esc(l.label)} <span class="m">· ${esc(l.panel)}</span></span><span>${fmtIDR(l.idr)}</span></div>`).join('');
-    const body = `${row('Gaji', '', fmtIDR(payroll))}
+    return `<div class="btotal"><span>${title}</span><span>gaji ${fmtIDR(payroll)}</span></div>
       ${row('Tagihan di Mandiri', 'tetap di Mandiri', '<b>' + fmtIDR(tm) + '</b>')}${det(mand)}
       ${row('→ Transfer ke Bank Jago', 'gaji − tagihan Mandiri', `<b class="${moneyCls(tr)}">${fmtIDR(tr)}</b>`)}
       ${row('Tagihan di Bank Jago', 'dibayar dari Jago', '<b>' + fmtIDR(tj) + '</b>')}${det(jago)}
       ${row('Sisa di Bank Jago', 'transfer − tagihan Jago', `<b class="${Math.abs(rem) < 1000 ? '' : moneyCls(rem)}">${fmtIDR(rem)}</b>`)}`;
-    return collapsible(id, `<div class="nm">${title}<span class="amt">→ Jago ${fmtIDR(tr)}</span></div><div class="pct ${Math.abs(rem) < 1000 ? '' : moneyCls(rem)}">sisa ${fmtShort(rem)}</div>`, body, st.open[id]);
   };
   const n = leaves.filter((l) => l.timing && l.payfrom).length;
-  return section('TR_MID', 'GAJI MID', M.incomeLeg(c, 'mid'), 'mid') + section('TR_END', 'GAJI END', M.incomeLeg(c, 'end'), 'end') +
-    `<div class="note" style="margin:-2px 0 10px">${n} dari ${leaves.length} baris sudah diberi waktu & rekening. <button class="refresh" id="classify">atur</button></div>`;
+  return card('Pembagian transfer antar rekening', section('GAJI MID', mid, 'mid') + section('GAJI END', end, 'end') +
+    `<div class="note">${n} dari ${leaves.length} baris sudah diberi waktu & rekening.</div><button class="btn small ghost" id="classify">Atur waktu & rekening</button>`);
 }
 function classify(c) {
   const leaves = allLeaves(c);
@@ -310,77 +303,23 @@ function classify(c) {
   };
 }
 function tlLeaves(c) { return M.budgetLines(c).filter((l) => Number(l.tl) > 0); }
-// Budget TL rate of a cycle (settings 'tlRate:<cycle>' = {rate, src: 'asumsi'|'kalibrasi', tl}).
-// Falls back to the cycle's transaction rate (or the latest earlier one).
-const budgetRateRec = (c) => db.setting('tlRate:' + c, null);
-function budgetRate(c) { const r = budgetRateRec(c); return Number(r?.rate) || M.rateFor(c) || M.rateFor(addMonths(c, -1)); }
-function setBudgetRate(c, rec) { db.setSetting('tlRate:' + c, rec); }
-function budgetRateNote(c) {
-  const r = budgetRateRec(c);
-  return r?.src === 'kalibrasi' ? 'Terkalibrasi dari top-up nyata (Transfer & TL → TOP-UP TL)'
-    : r ? 'Asumsi — kalibrasi setelah top-up di Transfer & TL → TOP-UP TL' : 'Default kurs siklus (belum ada kurs budget)';
-}
-const fmtRate = (r) => (Math.round(r * 100) / 100).toLocaleString('id-ID');
-
-// Two ways to plan the TL top-up (setting 'tlAnchor'):
-//  idr (default) — monthly flow: (1) TL per line × assumed rate → IDR per line; (2) send exactly the IDR
-//                  total via Flip (fees inside it), enter the TL that arrived, and calibrate: rate =
-//                  IDR ÷ TL, each line's TL = its IDR ÷ rate (IDR preserved, TL follows).
-//  tl            — the TL on each line is fixed; the IDR needed floats (rounded up to 100rb, buffer button).
 function tlPlan(c) {
   const leaves = tlLeaves(c);
-  if (!leaves.length) return '';
-  const mode = db.setting('tlAnchor', 'idr');
-  const rate = budgetRate(c), rec = budgetRateRec(c);
+  const totalTL = sum(leaves, (l) => l.tl);
+  if (totalTL <= 0) return '';
+  const rate = M.rateFor(c) || M.rateFor(addMonths(c, -1));
   const f = db.setting('flip', { fixed: 68000, pct: 1.5 });
-  const planTL = sum(leaves, (l) => l.tl), planIDR = sum(leaves, (l) => l.idr);
-  let body = seg('tlMode', [['idr', 'Kunci IDR'], ['tl', 'Kunci TL']], mode), head;
-  if (mode === 'idr') {
-    const flip = (planIDR - f.fixed) / (1 + f.pct / 100);
-    const cal = rec?.src === 'kalibrasi' && Math.abs(planTL - Number(rec.tl)) < 1; // stale once a TL line is edited
-    body += `<div class="note" style="margin:0 0 6px">IDR tiap baris tetap (sesuai alokasi gaji). Kirim persis total IDR, lalu kalibrasi kurs dari TL yang diterima.</div>`;
-    body += row('Budget IDR untuk TL', 'total baris TL, tanpa pembulatan', '<b>' + fmtIDR(planIDR) + '</b>');
-    body += row('1. Input di Flip', `(budget − ${fmtIDR(f.fixed)}) ÷ ${1 + f.pct / 100} · biaya Flip = ${fmtIDR(planIDR - flip)}`, '<b>' + fmtIDR(flip) + '</b>');
-    body += row(cal ? 'TL diterima' : 'Perkiraan TL', `kurs ${cal ? 'terkalibrasi' : 'asumsi'} ₺1 = Rp ${fmtRate(rate)}`, '<b>' + (cal ? '' : '≈ ') + fmtTL(planTL) + '</b>');
-    body += `<label>2. TL yang diterima dari Flip</label><div class="flex2"><div><input id="tlGot" inputmode="decimal" value="${cal ? rec.tl : ''}" placeholder="mis. ${Math.round(planTL)}"></div>
-      <div><button class="btn small" id="tlCal" style="margin:0;width:100%">Kalibrasi & sinkron ke Budget</button></div></div><div class="note" id="tlCalHint"></div>`;
-    body += `<div class="sep"></div>` + leaves.map((l) => `<div class="s sub"><span>${esc(l.label)} <span class="m">· ${fmtIDR(l.idr)}</span></span><span>${fmtTL(l.tl)}</span></div>`).join('');
-    body += `<div class="note">Kalibrasi: kurs = budget IDR ÷ TL diterima; TL tiap baris = IDR-nya ÷ kurs. IDR tidak berubah. Admin bank (kalau ada) terpisah.</div>`;
-    head = `<div class="nm">TOP-UP TL<span class="amt">${cal ? '' : '≈ '}${fmtTL(planTL)}</span></div><div class="pct">${cal ? '✓ ' : ''}${fmtShort(planIDR)}</div>`;
-  } else {
-    const need = planTL * rate, rounded = Math.ceil(need / 100000) * 100000;
-    const flip = (rounded - f.fixed) / (1 + f.pct / 100), estTL = rate ? rounded / rate : 0;
-    body += `<div class="note" style="margin:0 0 6px">TL tiap baris tetap; IDR yang perlu dikirim mengikuti kurs.</div>`;
-    body += row('Butuh IDR (TL × kurs)', fmtTL(planTL) + ' × ' + fmtRate(rate), fmtIDR(need));
-    body += row('Transfer ke AKBANK', 'dibulatkan ke atas 100rb' + (rounded - need > 0 ? ' · +' + fmtIDR(rounded - need) : ''), '<b>' + fmtIDR(rounded) + '</b>');
-    body += row('Input di Flip', `(transfer − ${fmtIDR(f.fixed)}) ÷ ${1 + f.pct / 100}`, '<b>' + fmtIDR(flip) + '</b>');
-    body += row('Perkiraan TL diterima', 'transfer ÷ kurs ₺1 = Rp ' + fmtRate(rate), '<b>≈ ' + fmtTL(estTL) + '</b>');
-    if (estTL - planTL > 0.01) body += `<button class="btn small ghost" id="tlBuffer">Tambah buffer +${fmtTL(estTL - planTL)} ke satu baris TL</button>`;
-    head = `<div class="nm">TOP-UP TL<span class="amt">${fmtTL(planTL)}</span></div><div class="pct">${fmtShort(rounded)}</div>`;
-  }
-  return collapsible('TL', head, body, st.open.TL);
-}
-function bindCalibrate(el, S, c) {
-  const inp = $('tlGot'), btn = $('tlCal'), hint = $('tlCalHint');
-  if (!inp) return;
-  const planIDR = sum(tlLeaves(c), (l) => l.idr);
-  const upd = () => { const t = parseAmount(inp.value); hint.innerHTML = t > 0 ? `Kurs kalibrasi: <b>₺1 = Rp ${fmtRate(planIDR / t)}</b>` : ''; };
-  inp.addEventListener('input', upd); upd();
-  btn.onclick = () => {
-    const got = parseAmount(inp.value);
-    if (!(got > 0)) return toast('Isi TL yang diterima');
-    const rate = planIDR / got;
-    const setTx = !M.hasOwnRate(c) || confirm(`Pakai juga ₺1 = Rp ${fmtRate(rate)} sebagai kurs transaksi ${cycleLabel(c, true)}? (sekarang Rp ${fmtRate(M.rateFor(c))})`);
-    tlLeaves(c).forEach((l) => db.put('budget', { ...l, tl: Math.round((Number(l.idr) / rate) * 100) / 100 }));
-    setBudgetRate(c, { rate: Math.round(rate * 100) / 100, src: 'kalibrasi', tl: got });
-    if (setTx) M.setRate(c, Math.round(rate * 100) / 100);
-    toast('Terkalibrasi ✓ ₺1 = Rp ' + fmtRate(rate));
-    st.open.TL = true; render(el, S);
-  };
+  const idr = totalTL * rate, rounded = Math.ceil(idr / 100000) * 100000;
+  const flip = (rounded - f.fixed) / (1 + f.pct / 100), eff = rate ? rounded / rate : 0;
+  return card('Rencana top-up TL', `<div class="btotal"><span>Total budget TL</span><span>${fmtTL(totalTL)}</span></div>
+    ${row('Kurs ₺1 = Rp ' + rate, '= ' + fmtIDR(idr), '')}${row('Transfer ke AKBANK (dibulatkan 100rb)', '', '<b>' + fmtIDR(rounded) + '</b>')}
+    ${row('Input di Flip', `(dibulatkan − ${fmtIDR(f.fixed)}) ÷ ${1 + f.pct / 100}`, '<b>' + fmtIDR(flip) + '</b>')}
+    ${row('TL yang diterima', 'buffer +' + fmtTL(eff - totalTL), '<b>' + fmtTL(eff) + '</b>')}
+    <button class="btn small ghost" id="tlBuffer">Tambah buffer +${fmtTL(eff - totalTL)} ke satu baris TL</button>`);
 }
 function tlBuffer(c) {
   const leaves = tlLeaves(c);
-  const rate = budgetRate(c);
+  const rate = M.rateFor(c) || M.rateFor(addMonths(c, -1));
   const totalTL = sum(leaves, (l) => l.tl), eff = Math.ceil(totalTL * rate / 100000) * 100000 / rate, buf = eff - totalTL;
   if (buf <= 0.01) return toast('Sudah bulat, tidak ada buffer');
   openModal({ title: 'Tambah buffer TL', sub: `+${fmtTL(buf)} supaya total TL = hasil transfer yang dibulatkan`,
