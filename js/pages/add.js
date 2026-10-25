@@ -33,8 +33,7 @@ function form(k) {
   const date = d.date || todayStr();
   let h = '<div class="card">';
   h += rateCard(cycleOf(date));
-  h += `<label>Jumlah — bisa rumus, mis. 1155.88-240-150</label><input id="fAmount" class="amount-input" inputmode="decimal" autocomplete="off" value="${esc(d.amount || '')}" placeholder="0"><div class="hint" id="convHint"></div>
-    <div class="mathbar" id="mathBar">${[['-', '−'], ['+', '+'], ['*', '×'], ['/', '÷'], ['back', '⌫']].map(([op, lbl]) => `<button type="button" data-op="${op}" aria-label="${lbl}">${lbl}</button>`).join('')}</div>`;
+  h += `<label>Jumlah — bisa rumus, mis. 1155.88-240-150</label><input id="fAmount" class="amount-input" inputmode="decimal" autocomplete="off" value="${esc(d.amount || '')}" placeholder="0"><div class="hint" id="convHint"></div>`;
   h += `<div class="flex2"><div><label>Tanggal</label><input id="fDate" type="date" value="${date}"><div class="note" id="cycleNote"></div></div>
         <div><label>${k === 'income' ? 'Masuk ke akun' : 'Dari akun'}</label><select id="fFrom">${accs.map((a) => `<option${a === from ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></div></div>`;
   if (k !== 'transfer') {
@@ -96,19 +95,6 @@ function bindForm(el, S) {
     $('fCategory').value = b.dataset.cat;
     $('catHint').innerHTML = catHint(b.dataset.cat);
   }));
-  // operator bar untuk HP (keypad desimal iOS/Android tak punya tombol − + × ÷)
-  const fa = $('fAmount');
-  el.querySelectorAll('#mathBar button').forEach((b) => {
-    b.addEventListener('mousedown', (e) => e.preventDefault()); // jangan rebut fokus — keyboard tetap terbuka
-    b.addEventListener('click', () => {
-      const op = b.dataset.op, start = fa.selectionStart ?? fa.value.length, end = fa.selectionEnd ?? fa.value.length;
-      if (op === 'back') {
-        if (start !== end) { fa.value = fa.value.slice(0, start) + fa.value.slice(end); try { fa.setSelectionRange(start, start); } catch {} }
-        else if (start > 0) { fa.value = fa.value.slice(0, start - 1) + fa.value.slice(start); try { fa.setSelectionRange(start - 1, start - 1); } catch {} }
-      } else { fa.value = fa.value.slice(0, start) + op + fa.value.slice(end); const p = start + op.length; try { fa.setSelectionRange(p, p); } catch {} }
-      fa.focus(); upd();
-    });
-  });
   upd();
   $('btnSave').onclick = () => save(el, S);
 }

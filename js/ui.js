@@ -75,6 +75,36 @@ export function openModal({ title, sub, fields, onSave, onDelete, saveLabel = 'S
 export function closeModal() { $('overlay').classList.remove('show'); }
 export const fail = (msg) => { throw new Error(msg); };
 
+// Operator bar untuk HP: keypad desimal iOS/Android tak punya tombol − + × ÷, jadi rumus
+// (mis. 1155.88-240-150) tak bisa diketik. Satu bar global menempel di bawah input angka
+// yang sedang fokus (semua menu & modal). Di desktop (keyboard lengkap) tidak dipasang.
+export function initMathBar() {
+  if (window.__mathbar || matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  window.__mathbar = true;
+  const bar = document.createElement('div');
+  bar.className = 'mathbar'; bar.id = 'globalMathBar';
+  bar.innerHTML = [['-', '−'], ['+', '+'], ['*', '×'], ['/', '÷'], ['back', '⌫']]
+    .map(([op, l]) => `<button type="button" data-op="${op}" aria-label="${l}">${l}</button>`).join('');
+  let target = null;
+  const setSel = (el, p) => { try { el.setSelectionRange(p, p); } catch {} };
+  bar.addEventListener('mousedown', (e) => e.preventDefault()); // jangan rebut fokus → keyboard tetap terbuka
+  bar.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || !target) return;
+    const op = b.dataset.op, s = target.selectionStart ?? target.value.length, en = target.selectionEnd ?? target.value.length;
+    if (op === 'back') {
+      if (s !== en) { target.value = target.value.slice(0, s) + target.value.slice(en); setSel(target, s); }
+      else if (s > 0) { target.value = target.value.slice(0, s - 1) + target.value.slice(s); setSel(target, s - 1); }
+    } else { target.value = target.value.slice(0, s) + op + target.value.slice(en); setSel(target, s + op.length); }
+    target.focus();
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const isNum = (el) => el && el.tagName === 'INPUT' && el.getAttribute('inputmode') === 'decimal';
+  document.addEventListener('focusin', (e) => {
+    if (isNum(e.target)) { target = e.target; e.target.insertAdjacentElement('afterend', bar); bar.style.display = 'flex'; }
+    else if (e.target !== bar && !bar.contains(e.target)) { bar.remove(); target = null; }
+  });
+}
+
 // ------------------------------------------------------------------ components
 export const tile = (t, v, extra = '') => `<div class="tile"><div class="t">${t}</div><div class="v">${v}</div>${extra}</div>`;
 export const tiles = (arr, cls = '') => `<div class="tiles ${cls}">${arr.join('')}</div>`;

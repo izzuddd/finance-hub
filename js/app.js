@@ -3,7 +3,7 @@ import * as db from './db.js';
 import * as M from './model.js';
 import * as sync from './sync.js';
 import { setCycleStartDay, cycleLabel, currentCycle, fmtIDR } from './util.js';
-import { $, toast, closeModal } from './ui.js';
+import { $, toast, closeModal, initMathBar } from './ui.js';
 import { CONFIG } from './config.js';
 import * as add from './pages/add.js';
 import * as budget from './pages/budget.js';
@@ -48,6 +48,7 @@ const repaint = () => { if (document.querySelector('#overlay.show')) return; cle
 async function boot() {
   await db.load();
   setCycleStartDay(db.setting('cycleStartDay', 15));
+  initMathBar();
   document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.page)));
   $('gear').onclick = () => show('settings');
   $('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') closeModal(); });
