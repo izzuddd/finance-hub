@@ -443,6 +443,8 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     // lagi dari setoran rutinnya — jadi tidak menambah beban arus kas bulanan.
     const crossMax = prj && Number(prj.crossMax) > 0 ? Number(prj.crossMax) : 0;
     const crossPocket = prj?.crossPocket || '';
+    const crossRepayStart = prj?.crossRepayStart || '2027-03'; // cross-kantong dicicil balik mulai abis Lebaran
+    const crossRepayMonths = Number(prj?.crossRepayMonths) || 12;
     const n = Number(prj?.loanMonths) || 24;
     const perMonth = Number(prj?.repayAmount) || 0; // fixed instalment, e.g. 4.166.667/bln
     const markup = 1 + (Number(prj?.loanMarkupPct) || 0) / 100;
@@ -451,7 +453,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     // modal awal (mis. hasil jual emas lewat Tante Muli): masuk sekali, bukan pinjaman, tidak dicicil
     const seed = Number(prj?.seedAmount) || 0, seedMonth = seed ? [String(prj.seedMonth || from), from].sort().pop() : '';
     let due = ps ? -Math.min(Number(ps.realized) || 0, ps.stage1) : 0; // already paid items reduce what's left
-    let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', repayEnd = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0, deferred = 0, crossUsed = 0;
+    let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', repayEnd = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0, deferred = 0, crossUsed = 0, crossLeft = 0, crossRepayEach = 0, crossRepayEnd = '';
     const fixedStart = prj?.loanRepayStart || '';
     const r0seed = (m) => (seed && m === seedMonth ? seed : 0);
     const rows = base.map((b) => {
@@ -461,6 +463,8 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
       // a fixed start month (e.g. Apr 2027) begins repaying even while stage 1 is still being built
       if (fixedStart && !repayStart && r.month >= fixedStart && loanLeft > 0.5) { repayStart = r.month; repayEach = perMonth || loanLeft / n; }
       if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; repayEnd = r.month; }
+      // cross-kantong dikembalikan ke kantong asal (mis. Spesialis), dicicil mulai abis Lebaran
+      if (r.month >= crossRepayStart && crossLeft > 0.5) { r.crossRepay = Math.min(crossRepayEach, crossLeft); crossLeft -= r.crossRepay; bal -= r.crossRepay; crossRepayEnd = r.month; }
       if (due > 0.5) {
         const room = Math.max(0, budgetCap - ownFunds - loan - crossUsed); // sisa pagu total kamar
         const spendable = Math.min(due, room);
@@ -478,6 +482,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
       if (!done && r.month >= lastCost && (due <= 0.5 || capReached)) {
         done = r.month; deferred = Math.max(0, due); due = 0; // sisa RAB di atas pagu = cicil santai, tanpa tenggat
         if (!fixedStart) { repayStart = addMonths(done, 1); repayEach = perMonth || loanLeft / n; }
+        if (crossUsed > 0.5) { crossLeft = crossUsed; crossRepayEach = crossUsed / crossRepayMonths; } // cross-kantong mulai dicicil balik
       }
       if (done && rem2 > 0.5 && r.month > done) { r.pay2 = Math.max(0, Math.min(bal, rem2)); rem2 -= r.pay2; bal -= r.pay2; if (rem2 <= 0.5) stage2Done = r.month; }
       r.balance = bal; r.loanLeft = Math.max(loanLeft, 0); r.rem1 = Math.max(due, 0); r.rem2 = done ? rem2 : r.rem1;
@@ -487,6 +492,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     const firstOwn = rows.find((r) => r.cost1 - r.draw > 0.5);
     const repayMonths = repayEach ? Math.ceil(loan * markup / repayEach - 1e-9) : n;
     return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap, budgetCap, deferred, crossUsed, crossPocket,
+      crossRepayEach, crossRepayStart: crossUsed > 0.5 ? crossRepayStart : '', crossRepayEnd, crossRepayMonths,
       seed, seedMonth, seedNote: prj?.seedNote || '',
       familyLoan: loan, firstOwnMonth: firstOwn ? firstOwn.month : '', repayEach, repayStart: repayStart || prj?.loanRepayStart || '', repayEnd, loanMonths: repayMonths,
       stage1End: done || '', stage1Done: done, stage1Waiting: !done, stage2On, stage2Done, ownFunds, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0),
@@ -576,8 +582,8 @@ export function kamarPlanFor(cycle) {
   const F = forecast(sc.id);
   const r = F.rows.find((x) => x.month === cycle);
   if (!r) return null;
-  const own = Math.max(0, (r.cost1 || 0) - (r.draw || 0));
-  return { own, draw: r.draw || 0, repay: r.repay || 0, total: own + (r.repay || 0), done: F.stage1Done, lender: F.project?.project.lender || 'keluarga' };
+  const own = Math.max(0, (r.cost1 || 0) - (r.draw || 0) - (r.cross || 0));
+  return { own, draw: r.draw || 0, cross: r.cross || 0, repay: r.repay || 0, total: own + (r.repay || 0), done: F.stage1Done, lender: F.project?.project.lender || 'keluarga' };
 }
 const kamarValue = (c) => (savingBudget(c).find((s) => s.name === KAMAR_POCKET)?.value || 0);
 
@@ -619,8 +625,8 @@ export function cashflowProjection(scenarioId, { from = currentCycle(), to = '20
   return memo('cf|' + scenarioId + '|' + from + '|' + to, () => {
     const F = scenarioId ? forecast(scenarioId, { from, to }) : null;
     const rows = (F ? F.rows : baseCashflow(scenarioId, from, to)).map((b) => {
-      const r = { ...b, kamarOwn: Math.max(0, (b.cost1 || 0) - (b.draw || 0)), repay: b.repay || 0 };
-      r.afterKamar = r.net + (b.seed || 0) - r.kamarOwn - r.repay - (b.pay2 || 0);
+      const r = { ...b, kamarOwn: Math.max(0, (b.cost1 || 0) - (b.draw || 0) - (b.cross || 0)), repay: b.repay || 0, crossRepay: b.crossRepay || 0 };
+      r.afterKamar = r.net + (b.seed || 0) - r.kamarOwn - r.repay - (b.pay2 || 0) - (b.crossRepay || 0);
       return r;
     });
     let cum = 0; rows.forEach((r) => { cum += r.afterKamar; r.cum = cum; });
