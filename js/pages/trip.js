@@ -1,7 +1,7 @@
 // Trips & events (mudik, liburan, hampers Lebaran…): plan items, agenda, gear, daily spending.
 import * as db from '../db.js';
 import * as M from '../model.js';
-import { esc, fmtIDR, todayStr, uid, parseAmount, weekday, fmtShort, sum } from '../util.js';
+import { esc, fmtIDR, todayStr, uid, parseAmount, weekday, fmtShort, sum, cycleLabel } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, moneyCls, empty, collapsible } from '../ui.js';
 
 const st = { ev: null, sub: 'plan', pick: false, open: { tCal: true }, calMode: 'month', calMonth: '', calYear: 0, calDay: '', calAll: true };
@@ -15,7 +15,7 @@ const CATS = [['TIKET', 'TIKET — pesawat/kereta pulang-pergi'], ['TRANSPORT', 
 export function render(el, S) {
   const evs = M.events();
   st.ev = st.ev && db.get('events', st.ev) ? st.ev : defaultEvent(evs)?.id;
-  let h = `<button class="btn small newev" id="newEv">+ Trip / acara baru</button>` + picker(evs);
+  let h = `<button class="btn small newev" id="newEv">+ Trip / acara baru</button>` + picker(evs) + potentialView(evs);
   if (!st.ev) { el.innerHTML = h + empty('Belum ada trip / acara'); $('newEv').onclick = () => editEvent(null); return; }
   const D = M.eventData(st.ev);
   const isTrip = D.ev.kind === 'trip';
@@ -71,23 +71,26 @@ function evMeta(e) {
   let when = '';
   if (e.start && e.start > t) when = `dalam ${nDays(t, e.start)} hari`;
   else if (e.start && (!e.end || e.end >= t)) when = 'sedang berjalan';
-  const badges = (M.isLeaveTrip(e) ? '<span class="badge">cuti</span>' : '') + (e.kind === 'gift' ? '<span class="badge">hadiah</span>' : '');
+  const badges = (M.isLeaveTrip(e) ? '<span class="badge">cuti</span>' : '') + (e.kind === 'gift' ? '<span class="badge">hadiah</span>' : '') + (Number(e.potential) ? '<span class="badge">potensial</span>' : '');
   return { range: range + len, when, badges };
 }
-// open on what matters now: the trip in progress, else the next one, else the latest past one
+// open on what matters now: the trip in progress, else the next one, else the latest past one (never a wishlist item)
 function defaultEvent(evs) {
   const t = todayStr();
-  return evs.find((e) => e.start && e.start <= t && (!e.end || e.end >= t)) ||
-    evs.filter((e) => e.start && e.start > t).sort((a, b) => (a.start < b.start ? -1 : 1))[0] || evs[0];
+  const real = evs.filter((e) => !Number(e.potential));
+  return real.find((e) => e.start && e.start <= t && (!e.end || e.end >= t)) ||
+    real.filter((e) => e.start && e.start > t).sort((a, b) => (a.start < b.start ? -1 : 1))[0] || real[0] || evs[0];
 }
 function picker(evs) {
   const t = todayStr();
   const cur = evs.find((e) => e.id === st.ev);
+  const real = evs.filter((e) => !Number(e.potential));
   const groups = [
-    ['Sedang berjalan', evs.filter((e) => e.start && e.start <= t && (!e.end || e.end >= t))],
-    ['Akan datang', evs.filter((e) => e.start && e.start > t).sort((a, b) => (a.start < b.start ? -1 : 1))],
-    ['Selesai', evs.filter((e) => e.end && e.end < t)],
-    ['Tanpa tanggal', evs.filter((e) => !e.start)],
+    ['Sedang berjalan', real.filter((e) => e.start && e.start <= t && (!e.end || e.end >= t))],
+    ['Akan datang', real.filter((e) => e.start && e.start > t).sort((a, b) => (a.start < b.start ? -1 : 1))],
+    ['Selesai', real.filter((e) => e.end && e.end < t)],
+    ['Tanpa tanggal', real.filter((e) => !e.start)],
+    ['💡 Potensial / wishlist', evs.filter((e) => Number(e.potential) === 1).sort((a, b) => (a.start < b.start ? -1 : 1))],
   ].filter(([, list]) => list.length);
   const item = (e) => { const m = evMeta(e);
     return `<div class="evrow ${e.id === st.ev ? 'active' : ''}"><button class="evsel" data-ev="${e.id}"><span class="t">${esc(e.name)} ${m.badges}</span><span class="m">${esc(m.range)}${m.when ? ' · <b>' + m.when + '</b>' : ''}${Number(e.budget) ? ' · ' + fmtIDR(e.budget) : ''}</span></button>
@@ -96,6 +99,24 @@ function picker(evs) {
   return `<div class="evpick ${st.pick || !cur ? 'open' : ''}">
     <button class="evcur" id="evToggle" aria-expanded="${st.pick || !cur}"><span><span class="t">${cur ? esc(cur.name) + ' ' + m.badges : 'Pilih trip / acara'}</span>${cur ? `<span class="m">${esc(m.range)}${m.when ? ' · ' + m.when : ''}</span>` : ''}</span><span class="cnt">${evs.length} ▾</span></button>
     <div class="evlist">${groups.map(([g, list]) => `<div class="grp">${g} · ${list.length}</div>` + list.map(item).join('')).join('')}</div></div>`;
+}
+// Potensial / wishlist trips: shown in their own section with a feasibility read against current free cash.
+function potentialView(evs) {
+  const pot = evs.filter((e) => Number(e.potential) === 1).sort((a, b) => (String(a.start) < String(b.start) ? -1 : 1));
+  if (!pot.length) return '';
+  const LBL = { ringan: '🟢 ringan', sedang: '🟡 sedang', berat: '🔴 berat', 'budget?': 'isi budget' };
+  const body = pot.map((e) => {
+    const f = M.tripFeasibility(e);
+    const months = Number.isFinite(f.months) ? f.months : null;
+    const plan = f.budget ? `<div class="m">Nabung ${fmtShort(f.budget / 12)}/bln (12 bln) atau ${fmtShort(f.budget / 24)}/bln (24 bln)</div>
+      <div class="m">Sisa gaji bebas ±${fmtShort(f.pace)}/bln${f.loanFreeMonth ? ' (setelah pinjaman kamar lunas, ' + cycleLabel(f.readyFrom, true) + ')' : ''}${months ? ' → cukup fokus ~' + months + ' bln' : f.pace <= 0 ? ' → belum ada sisa' : ''}</div>` : '';
+    return `<div class="evrow pot ${e.id === st.ev ? 'active' : ''}"><button class="evsel" data-ev="${e.id}">
+      <span class="t">${esc(e.name)} <span class="badge">${LBL[f.verdict] || f.verdict}</span></span>
+      <span class="m">Budget ${fmtIDR(f.budget)}${e.start ? ' · incar ' + fmtD(e.start) : ''}</span>${plan}${e.note ? `<span class="m">💡 ${esc(e.note)}</span>` : ''}</button></div>`;
+  }).join('');
+  return collapsible('tPot', `<div class="nm">💡 Potensial trip<span class="amt">${pot.length} · sesuai kondisimu</span></div>`,
+    body + `<div class="note">Feasibilitas pakai sisa gaji bebas (setelah budget, kamar & cicilan) — lihat Budget → Proyeksi cashflow. Dana ini juga dipakai Kos Palu, jadi ini panduan, bukan komitmen. Ketuk satu trip untuk isi/lihat rincian itemnya.</div>`,
+    st.open.tPot ?? true);
 }
 function planView(D) {
   const e = D.ev;
@@ -290,13 +311,14 @@ function deleteEvent(id) {
   return true;
 }
 function editEvent(id) {
-  const e = id ? db.get('events', id) : { id: uid('ev-'), name: '', kind: 'trip', budget: 0, start: todayStr(), end: '', active: 1, note: '' };
+  const e = id ? db.get('events', id) : { id: uid('ev-'), name: '', kind: 'trip', budget: 0, start: todayStr(), end: '', active: 1, note: '', potential: 0 };
   openModal({ title: id ? e.name : 'Trip / acara baru', fields: [{ k: 'name', label: 'Nama', type: 'text', value: e.name },
     { k: 'kind', label: 'Jenis', type: 'select', options: [['trip', 'Trip / mudik (agenda, barang, jajan)'], ['gift', 'Hampers / hadiah'], ['other', 'Acara lain']], value: e.kind },
     { k: 'budget', label: 'Budget (IDR)', type: 'money', value: e.budget || '' }, { k: 'start', label: 'Mulai', type: 'date', value: e.start }, { k: 'end', label: 'Selesai', type: 'date', value: e.end },
     { k: 'active', label: 'Tampilkan sebagai trip aktif', type: 'check', value: !!Number(e.active) },
-    { k: 'leave', label: 'Cuti ke Indonesia (gaji: MA prorata & lunch dipotong — masuk proyeksi)', type: 'check', value: M.isLeaveTrip(e) }],
-    onSave: (v) => { if (!v.name) throw new Error('Isi nama'); db.put('events', { ...e, ...v, budget: Number(v.budget) || 0, active: v.active ? 1 : 0, leave: v.leave && v.kind === 'trip' ? 1 : 0 }); st.ev = e.id; },
+    { k: 'leave', label: 'Cuti ke Indonesia (gaji: MA prorata & lunch dipotong — masuk proyeksi)', type: 'check', value: M.isLeaveTrip(e) },
+    { k: 'potential', label: 'Potensial / wishlist (belum pasti — tampil di bagian Potensial trip dgn feasibilitas)', type: 'check', value: !!Number(e.potential) }],
+    onSave: (v) => { if (!v.name) throw new Error('Isi nama'); db.put('events', { ...e, ...v, budget: Number(v.budget) || 0, active: v.active ? 1 : 0, leave: v.leave && v.kind === 'trip' ? 1 : 0, potential: v.potential ? 1 : 0 }); st.ev = e.id; },
     onDelete: id ? () => db.del('events', id) : null });
 }
 function editItem(id, D) {

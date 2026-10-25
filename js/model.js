@@ -644,6 +644,23 @@ export function tripSpending(e, from = currentCycle()) {
   if (rest > 0 && go >= from) out.push({ month: go, amount: rest, what: 'Selama trip', ev: e });
   return out;
 }
+/** Feasibility of a wishlist/"potensial" trip vs free cash (afterKamar), measured once the room loan eases. */
+export function tripFeasibility(ev) {
+  return memo('feas|' + ev.id, () => {
+    const budget = Number(ev.budget) || 0;
+    const sc = activeScenario();
+    const rows = sc ? cashflowProjection(sc.id).rows : [];
+    const F = sc ? forecast(sc.id) : null;
+    const loanFree = F ? ([...F.rows].reverse().find((r) => r.repay > 0.5)?.month || '') : '';
+    const after = loanFree ? addMonths(loanFree, 1) : currentCycle();
+    const win = rows.filter((r) => r.month >= after).slice(0, 12);
+    const base = win.length ? win : rows.filter((r) => r.month >= currentCycle()).slice(0, 12);
+    const pace = base.length ? sum(base, (r) => Math.max(0, r.afterKamar)) / base.length : 0;
+    const months = budget > 0 ? (pace > 0 ? Math.ceil(budget / pace) : Infinity) : 0;
+    const verdict = !budget ? 'budget?' : pace <= 0 ? 'berat' : months <= 8 ? 'ringan' : months <= 20 ? 'sedang' : 'berat';
+    return { budget, pace, months, readyFrom: after, loanFreeMonth: loanFree, verdict };
+  });
+}
 /** A pocket's projected balance: today's balance + monthly target − trip spending (tickets ahead, the rest at departure). */
 export function pocketPlan(name, { from = currentCycle(), to = '2030-12', trips = true } = {}) {
   return memo('pp|' + name + '|' + from + '|' + to, () => {
