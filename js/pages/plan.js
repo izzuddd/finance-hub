@@ -57,6 +57,7 @@ function kamarView() {
           : tile('Tahap lanjutan', '<span class="m">tidak direncanakan</span>', `<div class="m">fokus tahap 1 · RAB lanjutan ${fmtShort(p.stage2)} disimpan</div>`)),
     ], 'two');
   }
+  if (F.crossUsed > 0) h += `<div class="alloc"><div class="row"><b>🔄 Pinjam antar kantong</b><span class="neg">${fmtIDR(F.crossUsed)}</span></div><div class="row"><span>Sisa biaya tahap 1 ditutup dari saldo kantong <b>${esc(F.crossPocket)}</b> supaya kamar selesai ${F.stage1Done ? cycleLabel(F.stage1Done, true) : 'tepat waktu'}. Kantong itu terisi lagi dari setoran rutinnya — tidak menambah beban arus kas bulanan.</span></div></div>`;
   const cuts = rows.filter((r) => r.leaveCut);
   if (cuts.length) {
     h += collapsible('leavecuts', `<div class="nm">✈️ Potongan gaji saat cuti<span class="amt">${fmtShort(F.leaveCutTotal)}</span></div>`,
@@ -81,7 +82,7 @@ function kamarView() {
     const body = `<div class="tbl"><div class="th"><span>Bln</span><span>Masuk</span><span>Keluar</span><span>Sisa yang bisa dipakai</span><span>Proyek</span><span>Pinjam / cicil</span><span>Saldo</span></div>` +
       rs.map((r) => `<div class="tr" data-month="${r.month}" role="button"><span>${cycleLabel(r.month)}</span><span>${fmtShort(r.income)}</span><span>${fmtShort(r.out + r.talangan)}</span>
         <span class="${moneyCls(r.net)}">${fmtShort(r.net)}</span><span>${r.cost1 ? fmtShort(r.cost1) : r.pay2 ? fmtShort(r.pay2) : ''}</span>
-        <span class="${r.draw || r.seed ? 'pos' : r.repay ? 'neg' : ''}">${[r.seed ? '+' + fmtShort(r.seed) + ' modal' : '', r.draw ? '+' + fmtShort(r.draw) : '', r.repay ? '−' + fmtShort(r.repay) : ''].filter(Boolean).join(' ')}</span><span class="${moneyCls(r.balance)}">${fmtShort(r.balance)}</span></div>`).join('') + '</div>';
+        <span class="${r.draw || r.seed || r.cross ? 'pos' : r.repay ? 'neg' : ''}">${[r.seed ? '+' + fmtShort(r.seed) + ' modal' : '', r.draw ? '+' + fmtShort(r.draw) : '', r.cross ? '+' + fmtShort(r.cross) + ' kantong' : '', r.repay ? '−' + fmtShort(r.repay) : ''].filter(Boolean).join(' ')}</span><span class="${moneyCls(r.balance)}">${fmtShort(r.balance)}</span></div>`).join('') + '</div>';
     t += collapsible('y' + y, `<div class="nm">${y}<span class="amt">sisa ${fmtShort(sum(rs, (r) => r.net))}</span></div>`, body, st.open['y' + y] ?? y === currentCycle().slice(0, 4));
   }
   h += collapsible('kCash', `<div class="nm">📈 Arus kas & pinjaman<span class="amt">s/d ${cycleLabel(rows[rows.length - 1].month, true)}</span></div>`, chart + t, st.open.kCash);
@@ -97,7 +98,7 @@ function kamarView() {
     (F.loanTotal ? row('Cicilan per bulan', `${F.loanMonths} bulan, lunas ${F.repayEnd ? cycleLabel(F.repayEnd, true) : '–'}`, fmtIDR(F.repayEach)) : '') +
     row('Tambahan / terima kasih', '', (prj.loanMarkupPct || 0) + '%') + row('Tahap lanjutan', '', Number(prj.stage2On) ? 'ikut direncanakan' : 'tidak (fokus tahap 1)') +
     '<button class="btn small ghost" id="editPrj">✎ Ubah proyek & pinjaman</button>', st.open.kLoan);
-  h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong. Pinjaman dicicil ${F.loanMonths} bulan mulai ${F.repayStart ? cycleLabel(F.repayStart, true) : 'sebulan setelah tahap 1 lunas'}.</p>
+  h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; ${F.crossUsed ? 'lalu sisanya ditutup dari saldo kantong <b>' + esc(F.crossPocket) + '</b> (pinjam antar kantong) supaya tahap 1 selesai tepat waktu' : 'kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong'}. Pinjaman dicicil ${F.loanMonths} bulan mulai ${F.repayStart ? cycleLabel(F.repayStart, true) : 'sebulan setelah tahap 1 lunas'}.</p>
     ${Number.isFinite(F.budgetCap) ? `<p class="insight-p"><b>Budget-based:</b> total uang yang masuk ke kamar (uang sendiri + pinjaman) dibatasi <b>${fmtIDR(F.budgetCap)}</b>. Pekerjaan RAB di atas pagu (±${fmtShort((F.deferred || 0) + (F.stage2On ? 0 : p.stage2))}) jadi <b>cicil santai</b> — dikerjakan pelan-pelan dari sisa gaji nanti, tanpa tenggat.</p>` : ''}
     <p class="insight-p">Pilih Opsi 1 / 2 / 3 di atas. Potongan gaji saat cuti ikut jadwal di menu Trip. Arus kas bulanan versi budget ada di <b>Budget → Proyeksi cashflow</b>.</p>`, st.open.kHelp);
   return h;
@@ -187,7 +188,7 @@ function monthDetail(m) {
         xs.map((x) => `<span class="m">• ${esc(x.label)}${x.kind === 'upah' ? ' (upah)' : ''}: ${fmtIDR(M.projectCost(x, prj.contPct))}</span>`).join('<br>')).join('');
   }
   openModal({ title: 'Rincian ' + cycleLabel(m, true), sub: 'Proyeksi skenario ' + esc(F.scenario?.name || ''),
-    fields: [{ k: 'i', type: 'info', value: `${lines}${tal ? '<br>' + tal : ''}<hr><b>Sisa: ${fmtIDR(r.net)}</b>${r.seed ? '<br>+ Modal awal: ' + fmtIDR(r.seed) : ''}${r.cost1 ? '<br>Biaya tahap 1: ' + fmtIDR(r.cost1) : ''}${r.draw ? '<br>Pinjam: ' + fmtIDR(r.draw) : ''}${r.repay ? '<br>Cicil pinjaman: ' + fmtIDR(r.repay) : ''}${r.pay2 ? '<br>Bayar tahap lanjutan: ' + fmtIDR(r.pay2) : ''}<br>Saldo akhir: <b>${fmtIDR(r.balance)}</b>${rab}` }] });
+    fields: [{ k: 'i', type: 'info', value: `${lines}${tal ? '<br>' + tal : ''}<hr><b>Sisa: ${fmtIDR(r.net)}</b>${r.seed ? '<br>+ Modal awal: ' + fmtIDR(r.seed) : ''}${r.cost1 ? '<br>Biaya tahap 1: ' + fmtIDR(r.cost1) : ''}${r.draw ? '<br>Pinjam keluarga: ' + fmtIDR(r.draw) : ''}${r.cross ? '<br>Pinjam antar kantong: ' + fmtIDR(r.cross) : ''}${r.repay ? '<br>Cicil pinjaman: ' + fmtIDR(r.repay) : ''}${r.pay2 ? '<br>Bayar tahap lanjutan: ' + fmtIDR(r.pay2) : ''}<br>Saldo akhir: <b>${fmtIDR(r.balance)}</b>${rab}` }] });
 }
 
 // ------------------------------------------------------------------ project RAB
