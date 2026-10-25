@@ -11,6 +11,7 @@ import * as saving from './pages/saving.js';
 import * as plan from './pages/plan.js';
 import * as insight from './pages/insight.js';
 import * as settings from './pages/settings.js';
+import * as trip from './pages/trip.js';
 
 const PAGES = {
   insight: { title: 'Insight', mod: insight },
@@ -18,6 +19,7 @@ const PAGES = {
   add: { title: 'Catat', mod: add },
   budget: { title: 'Budget', mod: budget },
   plan: { title: 'Rencana', mod: plan },
+  trip: { title: 'Trip & Acara', mod: trip },
   settings: { title: 'Pengaturan', mod: settings },
 };
 const S = { page: 'add' };

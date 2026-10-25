@@ -1,23 +1,21 @@
-// Rencana: two tabs — Trip & acara (trip.js) and Planning Kamar Tinggede: the room project's
-// forecast (cash flow, family loan, stage 2), leave-in-Indonesia cuts and the RAB, each in a
-// collapsible section so the page stays calm. The plan's assumptions are stored data (no editor).
+// Rencana: dua tab — Kamar Tinggede dan Kos Palu. Kamar: forecast proyek (arus kas, pinjaman
+// keluarga, tahap lanjutan), potongan gaji cuti ke Indonesia, dan RAB — tiap bagian bisa dilipat.
+// Trip & acara kini menu tersendiri (lihat pages/trip.js). Asumsi rencana = data tersimpan (tanpa editor).
 import * as db from '../db.js';
 import * as M from '../model.js';
 import { esc, fmtIDR, fmtShort, currentCycle, cycleLabel, addMonths, uid, sum, groupBy } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, collapsible, lineChart, columns, moneyCls, empty } from '../ui.js';
-import * as trip from './trip.js';
 
-const st = { sub: 'acara', sc: null, open: { kCash: false, kRab: false }, section: {} };
+const st = { sub: 'kamar', sc: null, open: { kCash: false, kRab: false }, section: {} };
 const GROUPS = [['income', 'Pemasukan'], ['needs', 'Needs'], ['wants', 'Wants'], ['giving', 'Giving'], ['saving', 'Tabungan'], ['lifestyle', 'Liburan & gaya hidup'], ['buffer', 'Dana cadangan'], ['other', 'Lainnya']];
 const FREQ = [['monthly', 'tiap bulan'], ['spread', 'per tahun, dicicil 12×'], ['yearly', 'sekali setahun (bulan mulai)'], ['lebaran', 'sekali setahun di siklus Lebaran'], ['once', 'sekali (bulan mulai)']];
 
 export function render(el, S) {
-  if (!['acara', 'kamar', 'kos'].includes(st.sub)) st.sub = 'kamar';
+  if (!['kamar', 'kos'].includes(st.sub)) st.sub = 'kamar';
   const main = M.activeScenario();
   const scs = db.all('scenarios').filter((s) => Number(s.active) !== 0).sort((a, b) => (a.id === main?.id ? -1 : b.id === main?.id ? 1 : 0));
   st.sc = st.sc && db.get('scenarios', st.sc) ? st.sc : main?.id || scs[0]?.id;
-  let h = seg('pSeg', [['acara', 'Trip & acara'], ['kamar', 'Kamar Tinggede'], ['kos', 'Kos Palu']], st.sub);
-  if (st.sub === 'acara') { el.innerHTML = h + '<div id="tripRoot"></div>'; bindSeg(el, 'pSeg', (k) => { st.sub = k; render(el, S); }); return trip.render($('tripRoot'), S); }
+  let h = seg('pSeg', [['kamar', 'Kamar Tinggede'], ['kos', 'Kos Palu']], st.sub);
   if (st.sub === 'kos') {
     el.innerHTML = h + kosView(); bindSeg(el, 'pSeg', (k) => { st.sub = k; render(el, S); });
     el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
@@ -59,7 +57,7 @@ function kamarView() {
   if (cuts.length) {
     h += collapsible('leavecuts', `<div class="nm">✈️ Potongan gaji saat cuti<span class="amt">${fmtShort(F.leaveCutTotal)}</span></div>`,
       cuts.map((r) => { const L = M.leaveCut(r.month); return row(cycleLabel(r.month, true), `${esc(L.trips.join(', '))} · ${L.absent} hari absen (lunch) · ${L.outDays} hari di luar Turki (MA)`, `<span class="neg">−${fmtIDR(r.leaveCut)}</span>`, '', ` data-month="${r.month}" role="button"`); }).join('') +
-      '<div class="note">Dari jadwal di Trip & acara yang ditandai "cuti ke Indonesia". MA dipotong prorata hari di luar Turki (÷30), lunch USD tidak dibayar di hari kerja yang absen. Hari berangkat & pulang tidak dihitung, potongan masuk di gaji siklus berikutnya (tgl 15) — sama seperti mudik Jul–Agu 2026. Sudah dikurangkan dari proyeksi, pinjaman & tahap lanjutan RAB.</div>', st.open.leavecuts);
+      '<div class="note">Dari jadwal di menu Trip yang ditandai "cuti ke Indonesia". MA dipotong prorata hari di luar Turki (÷30), lunch USD tidak dibayar di hari kerja yang absen. Hari berangkat & pulang tidak dihitung, potongan masuk di gaji siklus berikutnya (tgl 15) — sama seperti mudik Jul–Agu 2026. Sudah dikurangkan dari proyeksi, pinjaman & tahap lanjutan RAB.</div>', st.open.leavecuts);
   }
   // tip: talangan that starts during stage 1 competes with the build money (e.g. Libur Lebaran)
   const early = M.talanganOpen().filter((t) => t.start && String(t.start).slice(0, 7) >= currentCycle() && String(t.start).slice(0, 7) <= F.stage1End);
@@ -96,7 +94,7 @@ function kamarView() {
     row('Tambahan / terima kasih', '', (prj.loanMarkupPct || 0) + '%') + row('Tahap lanjutan', '', Number(prj.stage2On) ? 'ikut direncanakan' : 'tidak (fokus tahap 1)') +
     '<button class="btn small ghost" id="editPrj">✎ Ubah proyek & pinjaman</button>', st.open.kLoan);
   h += collapsible('kHelp', '<div class="nm">ℹ️ Cara membaca</div>', `<p class="insight-p">Satu hitungan dengan Budget: sisa budget tiap bulan membayar tahap 1 sesuai jadwal RAB. Kalau kurang, <b>pinjaman ke ${esc(p?.project.lender || 'keluarga')}</b> menutup sampai batasnya${F.loanCap < Infinity ? ' (' + fmtShort(F.loanCap) + ')' : ''}; kalau masih kurang, pekerjaan menunggu bulan berikutnya — tanpa jual emas, tanpa pinjam antar kantong. Pinjaman dicicil ${F.loanMonths} bulan mulai ${F.repayStart ? cycleLabel(F.repayStart, true) : 'sebulan setelah tahap 1 lunas'}.</p>
-    <p class="insight-p">Pilih Opsi 1 / 2 / 3 di atas. Potongan gaji saat cuti ikut jadwal di Trip & acara. Arus kas bulanan versi budget ada di <b>Budget → Proyeksi cashflow</b>.</p>`, st.open.kHelp);
+    <p class="insight-p">Pilih Opsi 1 / 2 / 3 di atas. Potongan gaji saat cuti ikut jadwal di menu Trip. Arus kas bulanan versi budget ada di <b>Budget → Proyeksi cashflow</b>.</p>`, st.open.kHelp);
   return h;
 }
 // ------------------------------------------------------------------ pocket strategy (one pocket per goal)
