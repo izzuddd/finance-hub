@@ -4,7 +4,7 @@ import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, parseAmount, todayStr, currentCycle, cycleLabel, cycleOf, addMonths, uid, sum, pct, MONTHS } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, bar, moneyCls, empty } from '../ui.js';
 
-const st = { sub: 'pockets', open: null, logAll: false };
+const st = { sub: 'pockets', open: null, logAll: false, logPocket: '' };
 
 export function render(el, S) {
   let h = seg('sSeg', [['pockets', 'Kantong'], ['talangan', 'Talangan'], ['assets', 'Aset'], ['loans', 'Pinjaman']], st.sub);
@@ -22,6 +22,7 @@ export function render(el, S) {
   on('[data-log]', (d) => editLog(d.log));
   on('#addLog', () => editLog(null));
   on('#logMore', () => { st.logAll = !st.logAll; render(el, S); });
+  const lp = $('logPocket'); if (lp) lp.onchange = () => { st.logPocket = lp.value; render(el, S); };
   on('[data-tal]', (d) => editTalangan(d.tal));
   on('#addTal', () => editTalangan(null));
   on('#addGold', () => addGold());
@@ -64,11 +65,17 @@ function pocketsView() {
     }
     return x + '</div>';
   }).join(''));
-  const logs = M.savingLogSorted();
-  h += card(`Log tabungan (${logs.length})`, (st.logAll ? logs : logs.slice(0, 15)).map((l) => row(esc(l.desc) + (l.talanganTo ? ' <span class="badge w">talangan</span>' : ''),
-    `${esc(l.date)} · ${esc(l.pocket || '?')}${l.talanganTo ? ' → ' + esc(l.talanganTo) : ''}${Number(l.onBudget) ? '' : ' · di luar budget'}`,
-    `<span class="${moneyCls(l.amount)}">${fmtIDR(l.amount)}</span>`, '', ` data-log="${l.id}" role="button"`)).join('') +
-    `<button class="btn small ghost" id="logMore">${st.logAll ? 'Ringkas' : 'Tampilkan semua'}</button>`);
+  const allLogs = M.savingLogSorted();
+  const logs = allLogs.filter((l) => !st.logPocket || l.pocket === st.logPocket || l.talanganTo === st.logPocket);
+  const net = sum(logs, (l) => Number(l.amount) || 0);
+  const shown = st.logAll ? logs : logs.slice(0, 15);
+  h += card('Log tabungan', `<div class="flex2">
+      <select id="logPocket"><option value="">Semua kantong (${allLogs.length})</option>${M.pocketsList().map((p) => `<option${p.name === st.logPocket ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+      <button class="btn small ghost" id="logMore">${st.logAll ? 'Ringkas' : 'Semua (' + logs.length + ')'}</button></div>` +
+    (st.logPocket ? `<div class="note">${esc(st.logPocket)}: ${logs.length} catatan · net <b>${fmtIDR(net)}</b></div>` : '') +
+    (shown.length ? shown.map((l) => row(esc(l.desc) + (l.talanganTo ? ' <span class="badge w">talangan</span>' : ''),
+      `${esc(l.date)} · ${esc(l.pocket || '?')}${l.talanganTo ? ' → ' + esc(l.talanganTo) : ''}${Number(l.onBudget) ? '' : ' · di luar budget'}`,
+      `<span class="${moneyCls(l.amount)}">${fmtIDR(l.amount)}</span>`, '', ` data-log="${l.id}" role="button"`)).join('') : empty('Belum ada catatan')));
   return h;
 }
 function eta(months) { const c = addMonths(currentCycle(), months); return cycleLabel(c, true); }
