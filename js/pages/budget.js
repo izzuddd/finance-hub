@@ -46,7 +46,7 @@ export function render(el, S) {
   el.querySelectorAll('[data-line]').forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); editLine(n.dataset.line); }));
   el.querySelectorAll('[data-addline]').forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); editLine(null, n.dataset.addline, n.dataset.grp || ''); }));
   el.querySelectorAll('[data-paid]').forEach((n) => n.addEventListener('change', () => { const b = db.get('budget', n.dataset.paid); db.put('budget', { ...b, paid: n.checked ? 1 : 0 }); }));
-  el.querySelectorAll('[data-ppaid]').forEach((n) => n.addEventListener('change', () => setTarget(n.dataset.ppaid, { paid: n.checked ? 1 : 0 })));
+  el.querySelectorAll('[data-ppaid]').forEach((n) => n.addEventListener('change', () => { setTarget(n.dataset.ppaid, { paid: n.checked ? 1 : 0 }); autoSavingLog(n.dataset.ppaid, Number(n.dataset.ppv) || 0, n.checked); }));
   el.querySelectorAll('[data-target]').forEach((n) => n.addEventListener('click', () => editTarget(n.dataset.target)));
   el.querySelectorAll('[data-inc]').forEach((n) => n.addEventListener('click', () => editIncome(n.dataset.inc)));
   const bind = (id, fn) => { const n = $(id); if (n) n.onclick = fn; };
@@ -101,12 +101,12 @@ function budgetView(c) {
     const detail = s.auto
       ? `otomatis dari Planning Kamar: ${s.kamar.own ? 'tahap 1 ' + fmtIDR(s.kamar.own) : ''}${s.kamar.own && s.kamar.repay ? ' + ' : ''}${s.kamar.repay ? 'cicilan ' + esc(s.kamar.lender) + ' ' + fmtIDR(s.kamar.repay) : ''}`
       : `target ${fmtIDR(s.target)}${s.talTotal ? ' + cicilan ' + fmtIDR(s.talTotal) + ' = ' + fmtIDR(plan) : ''}`;
-    return `<div class="comp"><div class="row1"><label class="inl"><input type="checkbox" data-ppaid="${esc(s.name)}"${s.paid ? ' checked' : ''}><span class="${s.paid ? 'done' : ''}">${esc(s.name)}${role ? ` <span class="badge">${role}</span>` : ''}${s.talTotal ? ' <span class="badge w">+ talangan lama</span>' : ''}</span></label>
+    return `<div class="comp"><div class="row1"><label class="inl"><input type="checkbox" data-ppaid="${esc(s.name)}" data-ppv="${s.auto ? Math.round(s.kamar.total) : Math.round(Number(s.target) || 0)}"${s.paid ? ' checked' : ''}><span class="${s.paid ? 'done' : ''}">${esc(s.name)}${role ? ` <span class="badge">${role}</span>` : ''}${s.talTotal ? ' <span class="badge w">+ talangan lama</span>' : ''}</span></label>
       <span><b>${fmtIDR(s.value)}</b> <button class="edit-ico" data-target="${esc(s.name)}">✎</button></span></div>
       <div class="row2"><span>${detail}</span><span>${s.actual ? 'tercatat ' + fmtIDR(s.actual) : 'belum disetor'}</span></div>
       ${s.talangan.map((t) => `<div class="s sub"><span>${esc(t.item)}</span><span>${fmtIDR(t.perMonth)}</span></div>`).join('')}</div>`;
   }).join('') + (idle.length ? `<div class="note">Tidak disetor bulan ini: ${idle.map((s) => esc(s.name)).join(', ')}.${kamarLoanNote(c)}</div>` : '') +
-    '<div class="note">Satu tujuan = satu kantong (lihat Rencana → Planning Kamar → 👛 Strategi kantong). Pengeluaran yang direncanakan dibayar dari kantongnya sendiri — tanpa pinjam antar kantong. Angka tebal = setoran tercatat bulan ini (sebelum ada setoran, dipakai target). Kamar Tinggede terisi otomatis dari rencana kamar; isi ✎ kalau mau angka sendiri.</div>';
+    '<div class="note">Satu tujuan = satu kantong (lihat Rencana → Planning Kamar → 👛 Strategi kantong). Pengeluaran yang direncanakan dibayar dari kantongnya sendiri — tanpa pinjam antar kantong. Angka tebal = setoran tercatat bulan ini (sebelum ada setoran, dipakai target). Kamar Tinggede terisi otomatis dari rencana kamar; isi ✎ kalau mau angka sendiri. <b>Centang kotak = setoran otomatis tercatat di Log Tabungan</b> (Tabungan → Kantong).</div>';
   h += collapsible('SAVING', `<div class="nm">SAVING<span class="amt">${fmtIDR(savingTotal)}</span></div><div class="pct">${pct(savingTotal, allocated)}%</div>`, sbody, st.open.SAVING);
   h += `<button class="btn ghost" id="copyNext">Salin budget ini ke ${cycleLabel(addMonths(c, 1), true)}</button>`;
   return h;
@@ -164,6 +164,15 @@ function setTarget(pocket, patch) {
   const id = st.cycle + '|' + pocket;
   const r = db.get('pocket_targets', id) || { id, cycle: st.cycle, pocket, target: 0, paid: 0, timing: '', payfrom: '' };
   db.put('pocket_targets', { ...r, ...patch });
+}
+// Centang Saving di Budget → otomatis buat/hapus catatan setoran di Log Tabungan (saving_log, onBudget).
+function autoSavingLog(pocket, amount, on) {
+  const c = st.cycle;
+  const id = 'sl-bud-' + c + '-' + pocket.replace(/\W+/g, '').toLowerCase();
+  if (on) {
+    if (amount > 0) db.put('saving_log', { id, date: c + '-15', desc: 'Setoran ' + pocket + ' (budget ' + cycleLabel(c) + ')', amount, pocket, onBudget: 1, talanganTo: '', note: 'otomatis dari Budget', talangan: '' });
+    else toast('Target kantong ini 0 — isi target dulu (✎)');
+  } else if (db.get('saving_log', id)) db.del('saving_log', id);
 }
 function editTarget(pocket) {
   const r = db.get('pocket_targets', st.cycle + '|' + pocket) || {};

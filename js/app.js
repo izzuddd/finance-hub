@@ -12,10 +12,12 @@ import * as plan from './pages/plan.js';
 import * as insight from './pages/insight.js';
 import * as settings from './pages/settings.js';
 import * as trip from './pages/trip.js';
+import * as kredit from './pages/kredit.js';
 
 const PAGES = {
   insight: { title: 'Insight', mod: insight },
   saving: { title: 'Tabungan', mod: saving },
+  kredit: { title: 'Kredit', mod: kredit },
   add: { title: 'Catat', mod: add },
   budget: { title: 'Budget', mod: budget },
   plan: { title: 'Rencana', mod: plan },

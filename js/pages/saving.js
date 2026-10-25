@@ -2,16 +2,16 @@
 import * as db from '../db.js';
 import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, parseAmount, todayStr, currentCycle, cycleLabel, cycleOf, addMonths, uid, sum, pct, MONTHS } from '../util.js';
-import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, bar, moneyCls, empty } from '../ui.js';
+import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, bar, collapsible, moneyCls, empty } from '../ui.js';
 
-const st = { sub: 'pockets', open: null, logAll: false, logPocket: '' };
+const st = { sub: 'pockets', open: null, logAll: false, logPocket: '', sec: {} };
 
 export function render(el, S) {
-  let h = seg('sSeg', [['pockets', 'Kantong'], ['talangan', 'Talangan'], ['assets', 'Aset'], ['loans', 'Pinjaman']], st.sub);
+  if (!['pockets', 'talangan', 'assets'].includes(st.sub)) st.sub = 'pockets';
+  let h = seg('sSeg', [['pockets', 'Kantong'], ['talangan', 'Talangan'], ['assets', 'Aset']], st.sub);
   if (st.sub === 'pockets') h += pocketsView();
   if (st.sub === 'talangan') h += talanganView();
   if (st.sub === 'assets') h += assetsView();
-  if (st.sub === 'loans') h += loansView();
   el.innerHTML = h;
   bindSeg(el, 'sSeg', (k) => { st.sub = k; render(el, S); });
   const on = (sel, fn) => el.querySelectorAll(sel).forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); fn(n.dataset, n); }));
@@ -28,11 +28,10 @@ export function render(el, S) {
   on('#addGold', () => addGold());
   on('#fetchGold', () => fetchGold());
   on('#editSdb', () => editSdb());
-  on('[data-loan]', (d) => editLoan(d.loan));
-  on('#addLoan', () => editLoan(null));
   on('[data-inst]', (d) => editInstallment(d.inst));
   on('#addInst', () => editInstallment(null));
   el.querySelectorAll('[data-instpaid]').forEach((n) => n.addEventListener('change', () => { const r = db.get('installments', n.dataset.instpaid); db.put('installments', { ...r, paid: n.checked ? 1 : 0 }); }));
+  el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.sec[id] = !st.sec[id]; n.parentElement.classList.toggle('open', st.sec[id]); }));
 }
 
 // ------------------------------------------------------------------ pockets
@@ -223,17 +222,20 @@ function editTalangan(id) {
 // ------------------------------------------------------------------ assets
 function assetsView() {
   const g = M.gold(), tn = M.installments('Tanah');
-  let h = tiles([tile('Emas bersih (− SDB)', fmtIDR(g.net), `<div class="m">bruto ${fmtIDR(g.gross)}</div>`), tile('Tanah dibayar', fmtIDR(tn.paid), `<div class="m">dari ${fmtIDR(tn.paid + tn.unpaid)}</div>`)], 'two');
   const units = db.setting('goldUnits', { antam: 40, ubs: 5, galeri: 5 });
-  h += card('Emas', (g.latest ? row('Terakhir: ' + esc(g.latest.date), `ANTAM ${fmtIDR(g.latest.antam)} · UBS ${fmtIDR(g.latest.ubs)} · Galeri24 ${fmtIDR(g.latest.galeri)}`,
+  let h = tiles([tile('Emas bersih (− SDB)', fmtIDR(g.net), `<div class="m">bruto ${fmtIDR(g.gross)}</div>`), tile('Tanah dibayar', fmtIDR(tn.paid), `<div class="m">dari ${fmtIDR(tn.paid + tn.unpaid)}</div>`)], 'two');
+  const goldBody = (g.latest ? row('Terakhir: ' + esc(g.latest.date), `ANTAM ${fmtIDR(g.latest.antam)} · UBS ${fmtIDR(g.latest.ubs)} · Galeri24 ${fmtIDR(g.latest.galeri)}`,
     '<b>' + fmtIDR(g.latest.total) + '</b>', `<span class="${moneyCls(g.latest.ret)}">${(g.latest.ret * 100).toFixed(1)}%</span> · ${fmtIDR(Math.round(g.latest.total / (units.antam + units.ubs + units.galeri)))}/g`) : '') +
     g.rows.slice(0, -1).reverse().slice(0, 10).map((x) => row(esc(x.date), '', fmtIDR(x.total), (x.ret * 100).toFixed(1) + '%', ' style="opacity:.7"')).join('') +
     `<div class="flex2"><button class="btn small ghost" id="addGold">+ Catat harga</button><button class="btn small ghost" id="fetchGold">⟳ Ambil harga buyback</button></div>
-     <div class="note">Emas tidak dijual — dicatat untuk nilai kekayaan. Harga otomatis butuh endpoint kecil (lihat SETUP.md), selain itu isi manual dari galeri24.co.id.</div>`);
-  h += card('Biaya Safe Deposit Box', row('Jaminan kunci (sekali)', '', fmtIDR(g.sdb.keyFee)) + row(`Sewa tahunan + PPN ${g.sdb.ppnPct}%`, fmtIDR(g.sdb.annualWithPpn) + ' × ' + g.sdb.years + ' th', fmtIDR(g.sdb.annualWithPpn * g.sdb.years)) +
-    `<div class="btotal"><span>Total biaya SDB</span><span class="neg">${fmtIDR(g.sdb.total)}</span></div><button class="btn small ghost" id="editSdb">ubah</button>`);
-  h += card('Tanah — cicilan', `<div class="note">Dibayar ${fmtIDR(tn.paid)} · sisa ${fmtIDR(tn.unpaid)}</div>` + tn.rows.map((r) => `<div class="chk${Number(r.paid) ? ' done' : ''}"><input type="checkbox" data-instpaid="${r.id}"${Number(r.paid) ? ' checked' : ''}>
-    <div class="t" data-inst="${r.id}">${esc(r.date)}</div><div class="r">${fmtIDR(r.value)}</div></div>`).join('') + '<button class="btn fab-add small ghost" id="addInst">+ cicilan</button>');
+     <div class="note">Emas tidak dijual — dicatat untuk nilai kekayaan. Harga otomatis butuh endpoint kecil (lihat SETUP.md), selain itu isi manual dari galeri24.co.id.</div>`;
+  h += collapsible('asGold', `<div class="nm">Emas<span class="amt">${fmtIDR(g.net)}</span></div>`, goldBody, st.sec.asGold);
+  const sdbBody = row('Jaminan kunci (sekali)', '', fmtIDR(g.sdb.keyFee)) + row(`Sewa tahunan + PPN ${g.sdb.ppnPct}%`, fmtIDR(g.sdb.annualWithPpn) + ' × ' + g.sdb.years + ' th', fmtIDR(g.sdb.annualWithPpn * g.sdb.years)) +
+    `<div class="btotal"><span>Total biaya SDB</span><span class="neg">${fmtIDR(g.sdb.total)}</span></div><button class="btn small ghost" id="editSdb">ubah</button>`;
+  h += collapsible('asSdb', `<div class="nm">Biaya Safe Deposit Box<span class="amt">${fmtIDR(g.sdb.total)}</span></div>`, sdbBody, st.sec.asSdb);
+  const tanahBody = `<div class="note">Dibayar ${fmtIDR(tn.paid)} · sisa ${fmtIDR(tn.unpaid)}</div>` + tn.rows.map((r) => `<div class="chk${Number(r.paid) ? ' done' : ''}"><input type="checkbox" data-instpaid="${r.id}"${Number(r.paid) ? ' checked' : ''}>
+    <div class="t" data-inst="${r.id}">${esc(r.date)}</div><div class="r">${fmtIDR(r.value)}</div></div>`).join('') + '<button class="btn fab-add small ghost" id="addInst">+ cicilan</button>';
+  h += collapsible('asTanah', `<div class="nm">Tanah — cicilan<span class="amt">${fmtIDR(tn.paid)}</span></div>`, tanahBody, st.sec.asTanah);
   return h;
 }
 function addGold(prefill) {
@@ -271,23 +273,4 @@ function editInstallment(id) {
     onSave: (v) => { db.put('installments', { ...r, ...v, paid: v.paid ? 1 : 0 }); }, onDelete: id ? () => db.del('installments', id) : null });
 }
 
-// ------------------------------------------------------------------ loans
-function loansView() {
-  const L = M.loans();
-  let h = tiles([tile('Sisa pinjaman (daftar)', `<span class="${moneyCls(L.outstanding)}">${fmtIDR(L.outstanding)}</span>`), tile('Kategori "Loan" di catatan', `<span class="${moneyCls(L.diaryNet)}">${fmtIDR(L.diaryNet)}</span>`)], 'two');
-  h += card('Pinjaman / piutang', L.list.map((l) => row((Number(l.paid) ? '✅ ' : '') + esc(l.name) + (l.pocket ? ` <span class="badge">${esc(l.pocket)}</span>` : ''),
-    `${esc(l.date)}${Number(l.paid) && l.paidDate ? ' · lunas ' + esc(l.paidDate) : ''}${l.note ? ' · ' + esc(l.note) : ''}`,
-    `<span class="${moneyCls(l.amount)}">${fmtIDR(l.amount)}</span><button class="edit-ico" data-loan="${l.id}">✎</button>`, '', Number(l.paid) ? ' style="opacity:.55"' : '')).join('') +
-    '<button class="btn fab-add ghost" id="addLoan">+ Pinjaman baru</button><div class="note">Negatif = uang keluar (dipinjamkan). Positif = kamu meminjam.</div>');
-  h += card('Cek silang: transaksi kategori "Loan"', L.diary.slice(0, 30).map((t) => row(esc(t.desc), `${esc(t.date)} · ${esc(t.account)}`, `<span class="${moneyCls(t.amount)}">${fmtIDR(M.txIDR(t))}</span>`)).join('') || empty('Tidak ada'));
-  return h;
-}
-function editLoan(id) {
-  const l = id ? db.get('loans', id) : { id: uid('loan-'), date: todayStr(), name: '', amount: 0, pocket: '', paid: 0, paidDate: '', note: '' };
-  openModal({ title: id ? l.name : 'Pinjaman baru', sub: 'Negatif = dipinjamkan (uang keluar)',
-    fields: [{ k: 'name', label: 'Nama', type: 'text', value: l.name }, { k: 'date', label: 'Tanggal', type: 'date', value: l.date },
-      { k: 'amount', label: 'Jumlah (IDR)', type: 'money', value: l.amount || '' }, { k: 'pocket', label: 'Kantong', type: 'select', allowEmpty: true, options: M.pocketsList().map((p) => p.name), value: l.pocket },
-      { k: 'paid', label: 'Lunas', type: 'check', value: !!Number(l.paid) }, { k: 'paidDate', label: 'Tanggal lunas', type: 'date', value: l.paidDate }, { k: 'note', label: 'Catatan', type: 'text', value: l.note }],
-    onSave: (v) => { if (!v.name) throw new Error('Isi nama'); db.put('loans', { ...l, ...v, amount: Number(v.amount) || 0, paid: v.paid ? 1 : 0 }); toast('Tersimpan ✓'); },
-    onDelete: id ? () => db.del('loans', id) : null });
-}
+// (Pinjaman & piutang dipindah ke menu Kredit → tab Pinjaman — lihat pages/kredit.js)
