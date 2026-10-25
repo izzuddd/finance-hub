@@ -99,14 +99,14 @@ function budgetView(c) {
     const plan = s.target + s.talTotal;
     const [role] = M.POCKET_ROLE[s.name] || [''];
     const detail = s.auto
-      ? `otomatis dari Planning Kamar: ${s.kamar.own ? 'tahap 1 ' + fmtIDR(s.kamar.own) : ''}${s.kamar.own && s.kamar.repay ? ' + ' : ''}${s.kamar.repay ? 'cicilan ' + esc(s.kamar.lender) + ' ' + fmtIDR(s.kamar.repay) : ''}`
+      ? `uang sendiri untuk bangun kamar (otomatis dari Rencana → Kamar) — ketuk ✎ untuk atur sendiri. Pinjaman & cicilannya tidak masuk Budget.`
       : `target ${fmtIDR(s.target)}${s.talTotal ? ' + cicilan ' + fmtIDR(s.talTotal) + ' = ' + fmtIDR(plan) : ''}`;
     return `<div class="comp"><div class="row1"><label class="inl"><input type="checkbox" data-ppaid="${esc(s.name)}" data-ppv="${s.auto ? Math.round(s.kamar.total) : Math.round(Number(s.target) || 0)}"${s.paid ? ' checked' : ''}><span class="${s.paid ? 'done' : ''}">${esc(s.name)}${role ? ` <span class="badge">${role}</span>` : ''}${s.talTotal ? ' <span class="badge w">+ talangan lama</span>' : ''}</span></label>
       <span><b>${fmtIDR(s.value)}</b> <button class="edit-ico" data-target="${esc(s.name)}">✎</button></span></div>
       <div class="row2"><span>${detail}</span><span>${s.actual ? 'tercatat ' + fmtIDR(s.actual) : 'belum disetor'}</span></div>
       ${s.talangan.map((t) => `<div class="s sub"><span>${esc(t.item)}</span><span>${fmtIDR(t.perMonth)}</span></div>`).join('')}</div>`;
   }).join('') + (idle.length ? `<div class="note">Tidak disetor bulan ini: ${idle.map((s) => esc(s.name)).join(', ')}.${kamarLoanNote(c)}</div>` : '') +
-    '<div class="note">Satu tujuan = satu kantong (lihat Rencana → Planning Kamar → 👛 Strategi kantong). Pengeluaran yang direncanakan dibayar dari kantongnya sendiri — tanpa pinjam antar kantong. Angka tebal = setoran tercatat bulan ini (sebelum ada setoran, dipakai target). Kamar Tinggede terisi otomatis dari rencana kamar; isi ✎ kalau mau angka sendiri. <b>Centang kotak = setoran otomatis tercatat di Log Tabungan</b> (Tabungan → Kantong).</div>';
+    '<div class="note">Satu tujuan = satu kantong (lihat Rencana → Planning Kamar → 👛 Strategi kantong). Pengeluaran yang direncanakan dibayar dari kantongnya sendiri — tanpa pinjam antar kantong. Angka tebal = setoran tercatat bulan ini (sebelum ada setoran, dipakai target). Kamar Tinggede = <b>uang sendiri untuk bangun tahap 1</b>, bisa diedit ✎ per bulan sesuai kemampuan → forecast Rencana ikut menyesuaikan; pinjaman & cicilannya ada di Rencana → Kamar, tidak masuk Budget. <b>Centang kotak = setoran otomatis tercatat di Log Tabungan</b> (Tabungan → Kantong).</div>';
   h += collapsible('SAVING', `<div class="nm">SAVING<span class="amt">${fmtIDR(savingTotal)}</span></div><div class="pct">${pct(savingTotal, allocated)}%</div>`, sbody, st.open.SAVING);
   h += `<button class="btn ghost" id="copyNext">Salin budget ini ke ${cycleLabel(addMonths(c, 1), true)}</button>`;
   return h;
@@ -124,7 +124,7 @@ function kamarLoanNote(c) {
 function savingRows(c) {
   const K = M.kamarPlanFor(c);
   return M.savingBudget(c).map((s) => {
-    if (s.name === M.KAMAR_POCKET && !s.deposited && !s.target && K && K.total > 0) return { ...s, value: Math.round(K.total), auto: true, kamar: K };
+    if (s.name === M.KAMAR_POCKET && !s.deposited && !s.target && K && K.own > 0) return { ...s, value: Math.round(K.own), auto: true, kamar: K };
     // before anything is deposited, the plan for a pocket = its target + the old talangan instalments it receives,
     // so "Sudah dialokasikan" counts everything that really has to leave the salary
     if (!s.deposited && s.talTotal) return { ...s, value: s.target + s.talTotal };
@@ -359,7 +359,7 @@ function setupBody(c) {
 function typicalView(c) {
   const T = M.typicalBudget(c), I = M.projectedIncome(c), K = M.kamarPlanFor(c);
   const prev = M.cyclesWithData().filter((x) => x < c && M.budgetLines(x).length).pop();
-  const kamar = K ? Math.round(K.total) : 0;
+  const kamar = K ? Math.round(K.own) : 0;
   const talItems = M.talanganSchedule(c, c)[c] || [], talT = sum(talItems, (x) => x.amount);
   const alloc = T.needs + T.wants + T.giving + T.saving + kamar + talT;
   let h = `<div class="alloc"><div class="row"><b>📋 Perkiraan budget</b><span class="badge w">belum dipakai</span></div>
@@ -379,7 +379,7 @@ function typicalView(c) {
   const tl = T.targets.filter((t) => t.target);
   h += collapsible('TSAVING', `<div class="nm">SAVING<span class="amt">${fmtIDR(T.saving + kamar + talT)}</span></div><div class="pct">${pct(T.saving + kamar + talT, alloc)}%</div>`,
     tl.map((t) => row(esc(t.pocket) + ((M.POCKET_ROLE[t.pocket] || [])[0] ? ` <span class="badge">${M.POCKET_ROLE[t.pocket][0]}</span>` : ''), 'target', fmtIDR(t.target))).join('') +
-    (kamar ? row(esc(M.KAMAR_POCKET) + ' <span class="badge">Bangun kamar</span>', `otomatis: ${K.own ? 'tahap 1 ' + fmtIDR(K.own) : ''}${K.own && K.repay ? ' + ' : ''}${K.repay ? 'cicilan ' + esc(K.lender) + ' ' + fmtIDR(K.repay) : ''}`, fmtIDR(kamar)) : '') +
+    (kamar ? row(esc(M.KAMAR_POCKET) + ' <span class="badge">Bangun kamar</span>', 'uang sendiri (pinjaman & cicilan di Rencana → Kamar)', fmtIDR(kamar)) : '') +
     talItems.map((x) => row(esc(x.item) + ' <span class="badge w">talangan lama</span>', 'cicilan kembali ke kantong asal', fmtIDR(x.amount))).join('') +
     `<div class="note">Tidak disetor: ${T.targets.filter((t) => !t.target && !(t.pocket === M.KAMAR_POCKET && kamar)).map((t) => esc(t.pocket)).join(', ') || '—'}.${kamarLoanNote(c)}</div>`, st.open.TSAVING);
   h += `<button class="btn" id="useTypical">✓ Pakai perkiraan ini untuk ${cycleLabel(c, true)}</button>

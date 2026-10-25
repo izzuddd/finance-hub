@@ -468,7 +468,11 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
       if (due > 0.5) {
         const room = Math.max(0, budgetCap - ownFunds - loan - crossUsed); // sisa pagu total kamar
         const spendable = Math.min(due, room);
-        const own = Math.max(0, Math.min(spendable, bal));
+        // uang sendiri bulan ini = sisa budget, TAPI dibatasi target kantong "Kamar Tinggede" di Budget bila di-set (>0).
+        // Jadi laju bangun bisa diatur dinamis dari Budget → Saving → Kamar Tinggede; sisanya ditutup pinjaman/cross.
+        const kt = db.get('pocket_targets', r.month + '|' + KAMAR_POCKET);
+        const ownCap = kt && Number(kt.target) > 0 ? Number(kt.target) : Infinity;
+        const own = Math.max(0, Math.min(spendable, ownCap, bal));
         bal -= own; due -= own; ownFunds += own;
         let rest = spendable - own;
         const draw = rest > 0.5 ? Math.min(rest, Math.max(0, cap - loan)) : 0;
