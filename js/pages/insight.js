@@ -3,12 +3,16 @@
 import * as db from '../db.js';
 import * as M from '../model.js';
 import { esc, fmtIDR, fmtShort, currentCycle, cycleLabel, cyclePeriod, addMonths, sum } from '../util.js';
-import { toast, tile, tiles, card, row, bar, columns, donut, moneyCls, empty } from '../ui.js';
+import { toast, tile, tiles, card, row, bar, columns, donut, moneyCls, empty, seg, bindSeg } from '../ui.js';
 
-const st = { inv: null, year: null };
+const st = { inv: null, year: null, tab: 'ringkasan' };
 
 export function render(el, S) {
   const I = M.insight();
+  if (!['ringkasan', 'strategi'].includes(st.tab)) st.tab = 'ringkasan';
+  const segH = seg('iSeg', [['ringkasan', 'Ringkasan'], ['strategi', 'Strategi & nasihat']], st.tab);
+  const bindTabs = () => bindSeg(el, 'iSeg', (k) => { st.tab = k; render(el, S); });
+  if (st.tab === 'strategi') { el.innerHTML = segH + strategyView(I); bindTabs(); return; }
   const cur = I.cur;
   const years = [...new Set(I.months.map((m) => m.cycle.slice(0, 4)))];
   st.year = st.year || cur.slice(0, 4);
@@ -19,7 +23,7 @@ export function render(el, S) {
   const avgNeeds = sum(past, (m) => m.needsSpent) / n;
   const efLiquid = I.ef ? (Number(I.ef.calLiquid) || (I.ef.actual - I.efJmo)) : 0; // money physically liquid in the EF pocket (excl. JMO)
   const runway = avgNeeds > 0 ? efLiquid / avgNeeds : 0;
-  let h = `<div class="hero"><div class="m">Siklus ${cyclePeriod(cur)}</div><div class="big ${moneyCls(incNow - s.totalExpenses)}">${fmtIDR(incNow - s.totalExpenses)}</div><div class="m">sisa siklus ini (pemasukan ${fmtShort(incNow)} − pengeluaran ${fmtShort(s.totalExpenses)})</div></div>`;
+  let h = segH + `<div class="hero"><div class="m">Siklus ${cyclePeriod(cur)}</div><div class="big ${moneyCls(incNow - s.totalExpenses)}">${fmtIDR(incNow - s.totalExpenses)}</div><div class="m">sisa siklus ini (pemasukan ${fmtShort(incNow)} − pengeluaran ${fmtShort(s.totalExpenses)})</div></div>`;
   h += tiles([tile('Saldo bisa dipakai', fmtIDR(T.usable)), tile('Total tabungan', fmtIDR(sum(I.pockets, (p) => p.actual))), tile('Dana darurat', runway.toFixed(1) + ' bln', '<div class="m">likuid ÷ rata-rata Needs</div>')]);
 
   // income vs expenses per cycle for the chosen year
@@ -70,6 +74,76 @@ export function render(el, S) {
   el.innerHTML = h;
   el.querySelectorAll('[data-year]').forEach((b) => b.addEventListener('click', () => { st.year = b.dataset.year; st.inv = null; render(el, S); }));
   el.querySelectorAll('[data-pt]').forEach((b) => b.addEventListener('click', () => { st.inv = st.inv === b.dataset.pt ? null : b.dataset.pt; render(el, S); setTimeout(() => document.getElementById('invCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30); }));
+  bindTabs();
+}
+// ------------------------------------------------------------------ Strategi & nasihat (kesehatan arus kas + saran)
+function strategyView(I) {
+  const cur = I.cur;
+  const past = I.months.filter((m) => !m.isFuture && (m.income > 0 || m.expenses > 0));
+  const n = past.length || 1;
+  const avgInc = sum(past, (m) => m.income) / n, avgExp = sum(past, (m) => m.expenses) / n, avgSave = sum(past, (m) => m.saving) / n;
+  const rate = avgInc > 0 ? Math.round(avgSave / avgInc * 100) : 0;
+  const surplusN = past.filter((m) => m.surplus >= 0).length;
+  const avgNeeds = sum(past, (m) => m.needsSpent) / n;
+  const efLiquid = I.ef ? (Number(I.ef.calLiquid) || (I.ef.actual - I.efJmo)) : 0;
+  const runway = avgNeeds > 0 ? efLiquid / avgNeeds : 0;
+  const sc = db.all('scenarios').find((x) => Number(x.active) !== 0);
+  const F = sc ? M.forecast(sc.id) : null;
+  const CF = sc ? M.cashflowProjection(sc.id) : { rows: [] };
+  const afterLoan = F && F.repayEnd ? addMonths(F.repayEnd, 1) : cur;
+  const futWin = CF.rows.filter((r) => r.month >= afterLoan).slice(0, 12);
+  const pace = futWin.length ? sum(futWin, (r) => Math.max(0, r.afterKamar)) / futWin.length : 0;
+  const minBal = F ? F.minBalance : 0;
+  const dip = F ? (F.rows.reduce((m, r) => (!m || r.balance < m.balance ? r : m), null)) : null;
+
+  const healthy = surplusN >= n * 0.6 && rate >= 15 && minBal > -3e6;
+  const tight = !healthy && minBal > -1e7 && rate >= 5;
+  const [vLabel, vCls] = healthy ? ['🟢 Sehat', 'pos'] : tight ? ['🟡 Ketat terkendali', ''] : ['🔴 Perlu perhatian', 'neg'];
+
+  let h = tiles([
+    tile('Status arus kas', `<span class="${vCls}">${vLabel}</span>`),
+    tile('Nabung rata-rata', rate + '%', '<div class="m">target 20–30%</div>'),
+    tile('Dana darurat', runway.toFixed(1) + ' bln', '<div class="m">likuid ÷ Needs</div>'),
+    tile('Sisa gaji bebas', fmtShort(pace) + '/bln', `<div class="m">pasca-pinjaman (${cycleLabel(afterLoan, true)})</div>`),
+  ]);
+
+  const hp = [];
+  hp.push(`${surplusN} dari ${n} siklus ditutup surplus, rata-rata nabung <b>${rate}%</b> dari pemasukan ${fmtShort(avgInc)} (pengeluaran ${fmtShort(avgExp)}).`);
+  hp.push(`Saldo terendah proyeksi arus kas <b>${fmtIDR(minBal)}</b>${minBal < 0 ? ` — ada bulan mepet di ${dip ? cycleLabel(dip.month, true) : '±Nov 2026'} saat material kamar dibayar di muka. Siapkan buffer dana darurat untuk menambal.` : ' — tetap positif sepanjang rencana.'}`);
+  h += card('Kesehatan arus kas — ' + vLabel, hp.map((x) => `<p class="insight-p">${x}</p>`).join(''));
+
+  // beban bulanan
+  const cbRaw = M.componentBudgets(cur);
+  const cb = (cbRaw.needs || cbRaw.wants) ? cbRaw : (() => { const T = M.typicalBudget(cur); return { needs: T.needs, wants: T.wants, giving: T.giving, saving: T.saving }; })();
+  const talM = sum(M.talanganOpen(), (t) => t.perMonth);
+  let b = row('Kebutuhan (Needs)', 'rutin/bln', fmtIDR(cb.needs))
+    + row('Keinginan (Wants)', 'rutin/bln', fmtIDR(cb.wants))
+    + row('Giving', 'rutin/bln', fmtIDR(cb.giving))
+    + row('Setoran kantong', 'tabungan terjadwal/bln (incl. Travelling)', fmtIDR(cb.saving))
+    + (talM ? row('Talangan berjalan', `${M.talanganOpen().length} item, lunas ±2027`, `<span class="neg">${fmtIDR(talM)}/bln</span>`) : '');
+  h += card('Beban bulanan sekarang', b);
+
+  // komitmen besar ke depan
+  let tl = '';
+  if (F && F.loanTotal) tl += row('🏠 Pinjaman kamar (' + esc(F.project?.project.lender || 'keluarga') + ')', `cicil ${fmtIDR(F.repayEach)}/bln · ${cycleLabel(F.repayStart, true)}–${cycleLabel(F.repayEnd, true)}`, `<span class="neg">${fmtIDR(F.loanTotal)}</span>`);
+  const umroh = db.all('events').find((e) => /umroh/i.test(e.name || ''));
+  if (umroh) tl += row('🕋 ' + esc(umroh.name), `incar ${esc(umroh.start)} · ±${fmtShort((Number(umroh.budget) || 0) / 12)}/bln kalau nabung 12 bln`, fmtIDR(Number(umroh.budget) || 0));
+  tl += row('✈️ Travelling rutin', 'mudik Lebaran + libur tengah tahun', '±80jt/th');
+  const pots = db.all('events').filter((e) => Number(e.potential) === 1);
+  if (pots.length) tl += row('💡 Potensial trip', pots.map((e) => esc(e.name.split(' —')[0].split(' (')[0])).join(' · '), fmtShort(sum(pots, (e) => Number(e.budget) || 0)));
+  h += card('Komitmen besar ke depan', tl);
+
+  // nasihat
+  const adv = [];
+  adv.push(runway >= 6
+    ? `<b>Dana darurat ${runway.toFixed(1)} bln</b> sudah kuat (≥6 bln) — aman untuk fokus ke tujuan lain.`
+    : `<b>Dana darurat ${runway.toFixed(1)} bln</b> masih di bawah ideal 6 bln. Setelah talangan lama lunas (±2027), isi EF dulu sebelum menambah target baru.`);
+  if (F && F.loanTotal) adv.push(`<b>Pinjaman kamar ${fmtIDR(F.loanTotal)}</b> memang besar demi siap huni Lebaran 2027. Cicilan ${fmtIDR(F.repayEach)}/bln (${cycleLabel(F.repayStart, true)}–${cycleLabel(F.repayEnd, true)}) jalan bareng setoran Travelling 80jt/th — pastikan ${esc(F.project?.project.lender || 'pemberi pinjaman')} setuju tenor 2 thn, dan jaga buffer di ${dip ? cycleLabel(dip.month, true) : '±Nov 2026'} (bulan termepet).`);
+  if (umroh) adv.push(`<b>Umroh Des 2027</b> jatuh di tengah masa cicilan. Biar tidak bentrok, sisihkan ±${fmtShort((Number(umroh.budget) || 0) / 12)}/bln dari sekarang di kantong khusus — atau geser ke 2028 kalau arus kas terasa berat.`);
+  if (pots.length) adv.push(`<b>Potensial trip</b> paling pas <b>setelah pinjaman lunas (${cycleLabel(afterLoan, true)})</b>, saat sisa gaji bebas ±${fmtShort(pace)}/bln. Ambil satu per tahun, dahulukan yang termurah (wisata alam Indonesia, bisa digabung mudik). Ingat dana ini juga dipakai Kos Palu — pilih satu fokus tiap periode.`);
+  adv.push(`Urutan sehat: <b>EF cukup → kamar siap (Feb 2027) → lunasi pinjaman (${F ? cycleLabel(F.repayEnd, true) : ''}) → umroh 2027 → trip & Kos Palu bergantian</b>. Jaga rasio nabung 20–30% dan Wants tetap di dalam budget.`);
+  h += card('Nasihat untuk kondisimu', adv.map((x) => `<p class="insight-p">${x}</p>`).join(''));
+  return h;
 }
 function investigation(v) {
   let h = `<div class="card focus" id="invCard"><h3><span>🔍 ${cycleLabel(v.cycle, true)}</span></h3>` +
