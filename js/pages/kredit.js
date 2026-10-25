@@ -5,6 +5,7 @@ import * as db from '../db.js';
 import * as M from '../model.js';
 import { esc, fmtIDR, currentCycle, cycleLabel, todayStr, uid, sum } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, collapsible, moneyCls, empty } from '../ui.js';
+import { txRow, editTx } from './add.js';
 
 const st = { sub: 'kartu', open: { ccUse: true } };
 
@@ -19,6 +20,8 @@ export function render(el, S) {
   el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
   on('[data-cc]', (d) => editCard(d.cc));
   on('#addCc', () => editCard(null));
+  on('[data-ccbuy]', (d) => addPurchase(d.ccbuy));
+  on('[data-tx]', (d) => editTx(d.tx));
   on('[data-loan]', (d) => editLoan(d.loan));
   on('#addLoan', () => editLoan(null));
 }
@@ -38,7 +41,16 @@ function cardView() {
         : tile('Limit', '<span class="m">belum diatur</span>', '<div class="m">ketuk ✎ untuk set</div>'));
     });
     h += tiles(t, 'two');
-    h += `<div class="note">Belanja kartu dicatat di <b>Catat</b> (akun kartu) → jadi tagihan berjalan. Bayar tagihan = <b>Transfer</b> dari Mandiri ke kartu → saldo kembali 0.</div>`;
+    h += `<div class="note">Belanja kartu dicatat di sini atau di <b>Catat</b> (akun kartu) → jadi tagihan berjalan. Bayar tagihan = <b>Transfer</b> dari Mandiri ke kartu → saldo kembali 0.</div>`;
+    const cur = currentCycle();
+    cards.forEach((a) => {
+      const txs = M.txSorted(M.txOfCycle(cur)).filter((x) => x.account === a.name || x.to === a.name);
+      const spent = sum(txs.filter((x) => x.account === a.name && Number(x.amount) < 0), (x) => Math.abs(Number(x.amount)));
+      h += card(`Pembelian ${esc(a.name)} · ${cycleLabel(cur, true)}`,
+        `<div class="btotal"><span>Total belanja siklus ini</span><span class="neg">${fmtIDR(spent)}</span></div>` +
+        (txs.length ? txs.map(txRow).join('') : empty('Belum ada transaksi kartu')) +
+        `<button class="btn fab-add ghost" data-ccbuy="${esc(a.name)}">+ Pembelian kartu</button>`);
+    });
   } else {
     h += card('Belum ada kartu kredit aktif', `<div class="note">Rencana apply ada di <b>Trip → "Rencana: Apply Kartu Kredit Mandiri"</b>. Setelah kartu aktif, tambahkan di sini supaya muncul juga di menu Catat.</div><button class="btn small ghost" id="addCc">+ Tambah kartu (set limit & jatuh tempo)</button>`);
   }
@@ -68,6 +80,27 @@ function editCard(name) {
     onSave: (v) => {
       db.put('accounts', { ...raw, name: v.name || raw.name, currency: 'IDR', kind: 'credit', usable: 0, active: 1, limit: Number(v.limit) || 0, dueDay: v.dueDay || '', note: v.note || '' });
       toast('Tersimpan ✓');
+    } });
+}
+
+// Catat satu pembelian di kartu (bisa diulang untuk beberapa item). Tersimpan sbg transaksi akun kartu.
+function addPurchase(cardName) {
+  const cats = M.categoryNames().filter((c) => c !== 'Income' && c !== 'Transfer');
+  openModal({ title: 'Pembelian kartu', sub: cardName + ' · ulangi untuk tiap item',
+    fields: [
+      { k: 'desc', label: 'Item / keterangan', type: 'text', value: '' },
+      { k: 'amount', label: 'Harga (IDR)', type: 'money', value: '' },
+      { k: 'date', label: 'Tanggal', type: 'date', value: todayStr() },
+      { k: 'category', label: 'Kategori', type: 'select', options: cats, value: cats[0] },
+      { k: 'tenor', label: 'Cicilan 0% (bulan, kosong = bayar penuh)', type: 'number', value: '' },
+      { k: 'note', label: 'Catatan', type: 'text', value: '' }],
+    onSave: (v) => {
+      if (!v.desc) throw new Error('Isi item');
+      if (!v.amount) throw new Error('Isi harga');
+      const n = Number(v.tenor) || 0;
+      const note = [v.note, n > 1 ? `cicilan ${n}x @ ${fmtIDR(Math.round(Number(v.amount) / n))}` : ''].filter(Boolean).join(' · ');
+      M.saveTx({ id: uid('tx-'), date: v.date, desc: v.desc, category: v.category, amount: -Math.abs(Number(v.amount)), account: cardName, to: '', note, link: '' });
+      toast('Pembelian dicatat ✓');
     } });
 }
 

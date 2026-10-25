@@ -176,8 +176,12 @@ function autoSavingLog(pocket, amount, on) {
 }
 function editTarget(pocket) {
   const r = db.get('pocket_targets', st.cycle + '|' + pocket) || {};
+  const sb = savingRows(st.cycle).find((s) => s.name === pocket) || {};
+  const tal = Number(sb.talTotal) || 0, act = Number(sb.actual) || 0;
+  const tnote = tal ? `Angka di Budget ${fmtIDR(sb.value)} = target + <b>cicilan talangan lama ${fmtIDR(tal)}</b> (uang balik ke kantong ini, bukan setoran baru). Kolom ini khusus target setoran rutinmu — itulah kenapa bisa kosong walau Budget menampilkan angka.`
+    : act ? `Sudah tercatat setoran ${fmtIDR(act)} bulan ini — Budget memakai angka tercatat.` : 'Target setoran rutin ke kantong ini.';
   openModal({ title: 'Target tabungan — ' + pocket, sub: cycleLabel(st.cycle, true),
-    fields: [{ k: 'target', label: 'Target (IDR)', type: 'money', value: r.target || '' },
+    fields: [{ k: 'target', label: 'Target setoran rutin (IDR)', type: 'money', value: r.target || '', note: tnote },
       { k: 'timing', label: 'Dibayar dari gaji', type: 'select', options: [['', '—'], ['mid', 'Mid'], ['end', 'End']], value: r.timing || '' },
       { k: 'payfrom', label: 'Dari rekening', type: 'select', options: [['', '—'], ['Mandiri', 'Mandiri'], ['Bank Jago', 'Bank Jago']], value: r.payfrom || '' },
       { k: 'fwd', label: 'Pakai target ini sampai Desember tahun ini', type: 'check', value: false }],

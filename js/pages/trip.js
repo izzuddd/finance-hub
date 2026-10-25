@@ -220,7 +220,7 @@ function monthGrid(y, m, C, mini) {
     const dots = mine.slice(0, 3).map((c) => `<b style="background:${catColor(c)}"></b>`).join('') + (others ? '<b class="other"></b>' : '');
     const cls = ['cal-d', tr.some((t) => t.cur) ? 'trip cur' : tr.length ? 'trip' : '', ds === today ? 'today' : '', ds === st.calDay ? 'sel' : ''].join(' ');
     const marks = dots ? `<i class="cal-dots">${dots}</i>` : '';
-    cells += mini ? `<div class="${cls}">${marks}</div>`
+    cells += mini ? `<div class="${cls}"><span>${d}</span>${marks}</div>`
       : `<button class="${cls}" data-calday="${ds}" aria-label="${fd(ds)}"><span>${d}</span>${marks}</button>`;
   }
   return `<div class="cal-grid${mini ? ' mini' : ''}">${cells}</div>`;
