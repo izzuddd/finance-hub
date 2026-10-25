@@ -435,6 +435,9 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     const ps = prj ? projectSummary(prj.id, opt) : null;
     const base = baseCashflow(scenarioId, from, to);
     const cap = prj && Number(prj.loanMax) > 0 ? Number(prj.loanMax) : Infinity;
+    // Budget-based: total uang yang masuk ke kamar (uang sendiri + pinjaman) dibatasi `budgetCap`.
+    // Pekerjaan RAB di atas pagu tidak dibayar sekarang — jadi "cicil santai" (deferred), tanpa tenggat.
+    const budgetCap = prj && Number(prj.budgetCap) > 0 ? Number(prj.budgetCap) : Infinity;
     const n = Number(prj?.loanMonths) || 24;
     const perMonth = Number(prj?.repayAmount) || 0; // fixed instalment, e.g. 4.166.667/bln
     const markup = 1 + (Number(prj?.loanMarkupPct) || 0) / 100;
@@ -443,7 +446,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     // modal awal (mis. hasil jual emas lewat Tante Muli): masuk sekali, bukan pinjaman, tidak dicicil
     const seed = Number(prj?.seedAmount) || 0, seedMonth = seed ? [String(prj.seedMonth || from), from].sort().pop() : '';
     let due = ps ? -Math.min(Number(ps.realized) || 0, ps.stage1) : 0; // already paid items reduce what's left
-    let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', repayEnd = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0;
+    let bal = 0, loan = 0, loanLeft = 0, repayEach = 0, repayStart = '', repayEnd = '', done = '', rem2 = stage2On && ps ? ps.stage2 : 0, stage2Done = '', ownFunds = 0, cum = 0, deferred = 0;
     const fixedStart = prj?.loanRepayStart || '';
     const r0seed = (m) => (seed && m === seedMonth ? seed : 0);
     const rows = base.map((b) => {
@@ -454,14 +457,17 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
       if (fixedStart && !repayStart && r.month >= fixedStart && loanLeft > 0.5) { repayStart = r.month; repayEach = perMonth || loanLeft / n; }
       if (repayStart && r.month >= repayStart && loanLeft > 0.5) { r.repay = Math.min(repayEach, loanLeft); loanLeft -= r.repay; bal -= r.repay; repayEnd = r.month; }
       if (due > 0.5) {
-        const own = Math.max(0, Math.min(due, bal));
+        const room = Math.max(0, budgetCap - ownFunds - loan); // sisa pagu total kamar (uang sendiri + pinjaman)
+        const spendable = Math.min(due, room);
+        const own = Math.max(0, Math.min(spendable, bal));
         bal -= own; due -= own; ownFunds += own;
-        const draw = due > 0.5 ? Math.min(due, Math.max(0, cap - loan)) : 0;
+        const draw = (spendable - own) > 0.5 ? Math.min(spendable - own, Math.max(0, cap - loan)) : 0;
         loan += draw; due -= draw; loanLeft += draw * markup;
         r.cost1 = own + draw; r.draw = draw;
       }
-      if (!done && due <= 0.5 && r.month >= lastCost) {
-        done = r.month;
+      const capReached = budgetCap < Infinity && ownFunds + loan >= budgetCap - 0.5;
+      if (!done && r.month >= lastCost && (due <= 0.5 || capReached)) {
+        done = r.month; deferred = Math.max(0, due); due = 0; // sisa RAB di atas pagu = cicil santai, tanpa tenggat
         if (!fixedStart) { repayStart = addMonths(done, 1); repayEach = perMonth || loanLeft / n; }
       }
       if (done && rem2 > 0.5 && r.month > done) { r.pay2 = Math.max(0, Math.min(bal, rem2)); rem2 -= r.pay2; bal -= r.pay2; if (rem2 <= 0.5) stage2Done = r.month; }
@@ -471,7 +477,7 @@ export function forecast(scenarioId, { from = currentCycle(), to } = {}) {
     });
     const firstOwn = rows.find((r) => r.cost1 - r.draw > 0.5);
     const repayMonths = repayEach ? Math.ceil(loan * markup / repayEach - 1e-9) : n;
-    return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap,
+    return { scenario: sc, project: ps, rows, option: opt, loanTotal: loan, loanCap: cap, budgetCap, deferred,
       seed, seedMonth, seedNote: prj?.seedNote || '',
       familyLoan: loan, firstOwnMonth: firstOwn ? firstOwn.month : '', repayEach, repayStart: repayStart || prj?.loanRepayStart || '', repayEnd, loanMonths: repayMonths,
       stage1End: done || '', stage1Done: done, stage1Waiting: !done, stage2On, stage2Done, ownFunds, leaveCutTotal: sum(rows, (r) => r.leaveCut || 0),
