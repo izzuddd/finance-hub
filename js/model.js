@@ -60,9 +60,11 @@ export function recordSaving(cycle, pocket, amount, on) {
   const slId = 'sl-bud-' + cycle + '-' + slug, txId = 'tx-sav-' + cycle + '-' + slug;
   if (on) {
     if (!(amount > 0)) return false;
+    // tanggal mencentang kalau masih di bulan siklus ini; kalau beda bulan, pakai tgl 15 (biar tak nyasar siklus)
+    const date = todayStr().slice(0, 7) === cycle ? todayStr() : cycle + '-15';
     const acc = (db.get('pocket_targets', cycle + '|' + pocket) || {}).payfrom || 'Bank Jago';
-    db.put('saving_log', { id: slId, date: cycle + '-15', desc: 'Setoran ' + pocket, amount, pocket, onBudget: 1, talanganTo: '', note: 'otomatis dari Budget', talangan: '' });
-    saveTx({ id: txId, date: cycle + '-15', desc: pocket, category: 'Saving', amount: -Math.abs(amount), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
+    db.put('saving_log', { id: slId, date, desc: 'Setoran ' + pocket, amount, pocket, onBudget: 1, talanganTo: '', note: 'otomatis dari Budget', talangan: '' });
+    saveTx({ id: txId, date, desc: pocket, category: 'Saving', amount: -Math.abs(amount), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
     return true;
   }
   if (db.get('saving_log', slId)) db.del('saving_log', slId);
@@ -75,7 +77,8 @@ export function recordGiving(line, on) {
     const acc = line.payfrom || 'Bank Jago';
     const amt = isTRY(acc) ? Number(line.tl) || 0 : Number(line.idr) || 0;
     if (!(amt > 0)) return;
-    saveTx({ id: txId, date: line.cycle + '-15', desc: line.label, category: 'Giving', amount: -Math.abs(amt), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
+    const date = todayStr().slice(0, 7) === line.cycle ? todayStr() : line.cycle + '-15';
+    saveTx({ id: txId, date, desc: line.label, category: 'Giving', amount: -Math.abs(amt), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
   } else if (db.get('transactions', txId)) db.del('transactions', txId);
 }
 
