@@ -53,6 +53,31 @@ export function saveTx(tx) {
   tx.cycle = cycleOf(tx.date);
   return db.put('transactions', tx);
 }
+// Auto-record saat Saving/Giving dicentang di Budget → masuk Catat (transaksi, konvensi: dari Bank Jago).
+// Saving juga buat catatan kantong (saving_log). Id deterministik → idempotent, hapus saat di-uncheck.
+export function recordSaving(cycle, pocket, amount, on) {
+  const slug = pocket.replace(/\W+/g, '').toLowerCase();
+  const slId = 'sl-bud-' + cycle + '-' + slug, txId = 'tx-sav-' + cycle + '-' + slug;
+  if (on) {
+    if (!(amount > 0)) return false;
+    const acc = (db.get('pocket_targets', cycle + '|' + pocket) || {}).payfrom || 'Bank Jago';
+    db.put('saving_log', { id: slId, date: cycle + '-15', desc: 'Setoran ' + pocket, amount, pocket, onBudget: 1, talanganTo: '', note: 'otomatis dari Budget', talangan: '' });
+    saveTx({ id: txId, date: cycle + '-15', desc: pocket, category: 'Saving', amount: -Math.abs(amount), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
+    return true;
+  }
+  if (db.get('saving_log', slId)) db.del('saving_log', slId);
+  if (db.get('transactions', txId)) db.del('transactions', txId);
+  return true;
+}
+export function recordGiving(line, on) {
+  const txId = 'tx-giv-' + line.id;
+  if (on) {
+    const acc = line.payfrom || 'Bank Jago';
+    const amt = isTRY(acc) ? Number(line.tl) || 0 : Number(line.idr) || 0;
+    if (!(amt > 0)) return;
+    saveTx({ id: txId, date: line.cycle + '-15', desc: line.label, category: 'Giving', amount: -Math.abs(amt), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
+  } else if (db.get('transactions', txId)) db.del('transactions', txId);
+}
 
 // ------------------------------------------------------------------ balances (Cycle setup / Real-time saldo)
 export function initialBalance(cycle, acc) {

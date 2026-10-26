@@ -227,8 +227,7 @@ function renderMonthly() {
       const amt = parseAmount(m.querySelector(`[data-moamt="${r.key}"]`).value);
       if (!amt) return;
       if (r.key.startsWith('p:')) {
-        const id = 'sl-bud-' + c2 + '-' + r.name.replace(/\W+/g, '').toLowerCase();
-        db.put('saving_log', { id, date: c2 + '-15', desc: 'Setoran ' + r.name, amount: amt, pocket: r.name, onBudget: 1, talanganTo: '', note: 'setoran bulanan', talangan: '' });
+        M.recordSaving(c2, r.name, amt, true); // saving_log + transaksi kategori Saving (Catat)
         const tid = c2 + '|' + r.name, tr = db.get('pocket_targets', tid) || { id: tid, cycle: c2, pocket: r.name, target: 0, timing: '', payfrom: '' };
         db.put('pocket_targets', { ...tr, paid: 1 });
       } else {
