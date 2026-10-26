@@ -2,9 +2,9 @@
 import * as db from '../db.js';
 import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, parseAmount, todayStr, currentCycle, cycleLabel, cycleOf, addMonths, uid, sum, pct, MONTHS } from '../util.js';
-import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, bar, collapsible, moneyCls, empty } from '../ui.js';
+import { $, toast, openModal, closeModal, tile, tiles, card, row, seg, bindSeg, bar, collapsible, moneyCls, empty } from '../ui.js';
 
-const st = { sub: 'pockets', open: null, logAll: false, logPocket: '', sec: {} };
+const st = { sub: 'pockets', open: null, logAll: false, logPocket: '', sec: {}, moCycle: null };
 
 export function render(el, S) {
   if (!['pockets', 'talangan', 'assets'].includes(st.sub)) st.sub = 'pockets';
@@ -21,6 +21,7 @@ export function render(el, S) {
   on('[data-phd]', (d) => editPhd(d.phd));
   on('[data-log]', (d) => editLog(d.log));
   on('#addLog', () => editLog(null));
+  on('#moDep', () => monthlyDeposit());
   on('#logMore', () => { st.logAll = !st.logAll; render(el, S); });
   const lp = $('logPocket'); if (lp) lp.onchange = () => { st.logPocket = lp.value; render(el, S); };
   on('[data-tal]', (d) => editTalangan(d.tal));
@@ -39,7 +40,7 @@ function pocketsView() {
   const P = M.pockets();
   const g = M.gold(), tn = M.installments('Tanah');
   let h = tiles([tile('Total kantong', fmtIDR(sum(P, (p) => p.actual))), tile('Aset inti', fmtIDR(g.net + tn.paid), `<div class="m">emas bersih + tanah</div>`)], 'two');
-  h += `<button class="btn fab-add ghost" id="addLog">+ Catat setoran / penarikan tabungan</button>`;
+  h += `<div class="flex2"><button class="btn" id="moDep">✓ Setoran bulanan sekaligus</button><button class="btn ghost" id="addLog">+ Catat manual</button></div>`;
   h += card('Kantong — ketuk untuk rincian', P.map((p) => {
     const open = st.open === p.name, isEF = /emergency/i.test(p.name);
     let x = `<div class="comp${open ? ' open' : ''}"><div data-pocket="${esc(p.name)}" role="button" tabindex="0">
@@ -178,6 +179,67 @@ function editLog(id) {
       toast('Tersimpan ✓');
     },
     onDelete: id ? () => db.del('saving_log', id) : null });
+}
+
+// ------------------------------------------------------------------ setoran bulanan (batch)
+// Satu layar: semua kantong + talangan bulan itu, jumlah terisi otomatis dari target/cicilan.
+// Centang & ubah seperlunya, simpan sekaligus → masuk Log Tabungan + kurangi sisa talangan.
+function monthlyDeposit() { st.moCycle = st.moCycle || currentCycle(); renderMonthly(); }
+function moRows(c) {
+  const K = M.kamarPlanFor(c);
+  const pockets = M.pocketsList().map((p) => {
+    let amt = M.pocketTarget(c, p.name);
+    if (p.name === M.KAMAR_POCKET && !amt && K) amt = Math.round(K.own || 0);
+    const done = db.where('saving_log', (l) => Number(l.onBudget) && String(l.date).slice(0, 7) === c && l.pocket === p.name).length > 0;
+    return { key: 'p:' + p.name, name: p.name, amt: Math.round(amt) || 0, done };
+  }).filter((p) => p.amt > 0 || p.done);
+  const tals = M.talanganOpen().map((t) => ({ key: 't:' + t.id, id: t.id, name: t.item, usage: t.usage, amt: Math.round(t.perMonth) || 0, done: !!db.get('talangan_pay', t.id + '|' + c) }))
+    .filter((t) => t.amt > 0 || t.done);
+  return { pockets, tals };
+}
+function renderMonthly() {
+  const c = st.moCycle, m = $('modal');
+  const { pockets, tals } = moRows(c);
+  const line = (r) => `<div class="tx"><div class="l"><label class="inl"><input type="checkbox" data-mo="${r.key}" checked>
+      <span>${esc(r.name)}${r.done ? ' <span class="badge g">sudah</span>' : ''}${r.usage ? ' <span class="badge w">→ ' + esc(r.usage) + '</span>' : ''}</span></label></div>
+    <div class="r"><input data-moamt="${r.key}" inputmode="decimal" value="${r.amt || ''}" style="width:118px;text-align:right"></div></div>`;
+  const total = sum(pockets, (p) => p.amt) + sum(tals, (t) => t.amt);
+  m.innerHTML = `<div class="grab"></div><h2>Setoran bulanan</h2>
+    <div class="cal-nav" style="justify-content:center;margin:2px 0 8px"><button class="btn small ghost" id="moPrev">‹</button><b>${cycleLabel(c, true)}</b><button class="btn small ghost" id="moNext">›</button></div>
+    <div class="sub">Jumlah terisi dari target/cicilan. Centang yang disetor, ubah bila perlu, lalu simpan sekaligus.</div>
+    <div class="mbody">${pockets.length ? '<div class="grp">Kantong</div>' + pockets.map(line).join('') : ''}
+      ${tals.length ? '<div class="grp">Talangan (cicilan ke kantong)</div>' + tals.map(line).join('') : ''}
+      ${!pockets.length && !tals.length ? empty('Tidak ada target/talangan bulan ini') : ''}
+      <div class="btotal"><span>Total setoran</span><span id="moTotal">${fmtIDR(total)}</span></div></div>
+    <div class="mbtns"><button class="btn ghost" id="moCancel">Tutup</button><button class="btn" id="moSave">Simpan semua</button></div>`;
+  $('overlay').classList.add('show');
+  $('moCancel').onclick = closeModal;
+  $('moPrev').onclick = () => { st.moCycle = addMonths(c, -1); renderMonthly(); };
+  $('moNext').onclick = () => { st.moCycle = addMonths(c, 1); renderMonthly(); };
+  const recalc = () => { let t = 0; m.querySelectorAll('[data-mo]').forEach((cb) => { if (cb.checked) t += parseAmount(m.querySelector(`[data-moamt="${cb.dataset.mo}"]`).value); }); $('moTotal').textContent = fmtIDR(t); };
+  m.querySelectorAll('[data-mo],[data-moamt]').forEach((el) => el.addEventListener('input', recalc));
+  m.querySelectorAll('[data-mo]').forEach((el) => el.addEventListener('change', recalc));
+  $('moSave').onclick = () => {
+    const c2 = st.moCycle; let n = 0;
+    [...pockets, ...tals].forEach((r) => {
+      const cb = m.querySelector(`input[data-mo="${r.key}"]`);
+      if (!cb || !cb.checked) return;
+      const amt = parseAmount(m.querySelector(`[data-moamt="${r.key}"]`).value);
+      if (!amt) return;
+      if (r.key.startsWith('p:')) {
+        const id = 'sl-bud-' + c2 + '-' + r.name.replace(/\W+/g, '').toLowerCase();
+        db.put('saving_log', { id, date: c2 + '-15', desc: 'Setoran ' + r.name, amount: amt, pocket: r.name, onBudget: 1, talanganTo: '', note: 'setoran bulanan', talangan: '' });
+        const tid = c2 + '|' + r.name, tr = db.get('pocket_targets', tid) || { id: tid, cycle: c2, pocket: r.name, target: 0, timing: '', payfrom: '' };
+        db.put('pocket_targets', { ...tr, paid: 1 });
+      } else {
+        db.put('saving_log', { id: 'sl-bud-' + c2 + '-tal-' + r.id, date: c2 + '-15', desc: 'Nabung ' + r.name, amount: amt, pocket: r.usage, onBudget: 1, talanganTo: '', note: 'setoran bulanan', talangan: r.id });
+        db.put('talangan_pay', { id: r.id + '|' + c2, talangan: r.id, cycle: c2, amount: amt });
+      }
+      n++;
+    });
+    toast(n + ' setoran disimpan ✓');
+    closeModal();
+  };
 }
 
 // ------------------------------------------------------------------ talangan
