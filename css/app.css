@@ -25,6 +25,7 @@ header h1 { font-size: 20px; margin: 0; letter-spacing: -.2px; }
 #syncBar { display: none; max-width: 680px; margin: 0 auto 6px; padding: 7px 16px; font-size: 12.5px; line-height: 1.35; cursor: pointer; }
 #syncBar.show { display: block; } #syncBar.syncing { color: var(--brand); } #syncBar.error { color: var(--bad); } #syncBar.auth { color: var(--warn); }
 header .rate { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+header .ver { font-size: 10.5px; color: var(--ink-3); opacity: .7; font-variant-numeric: tabular-nums; cursor: pointer; }
 #gear { background: none; border: 0; font-size: 20px; cursor: pointer; padding: 4px; color: var(--ink-2); }
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--ink-3); }
 .dot.ok, .dot.idle { background: var(--good); } .dot.syncing { background: var(--brand); animation: pulse 1s infinite; }

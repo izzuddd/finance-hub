@@ -49,6 +49,8 @@ async function boot() {
   await db.load();
   setCycleStartDay(db.setting('cycleStartDay', 15));
   initMathBar();
+  $('verLabel').textContent = 'v' + CONFIG.APP_VERSION;
+  $('verLabel').onclick = () => show('settings');
   document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.page)));
   $('gear').onclick = () => show('settings');
   $('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') closeModal(); });
