@@ -62,9 +62,10 @@ export function recordSaving(cycle, pocket, amount, on) {
     if (!(amount > 0)) return false;
     // tanggal mencentang kalau masih di bulan siklus ini; kalau beda bulan, pakai tgl 15 (biar tak nyasar siklus)
     const date = todayStr().slice(0, 7) === cycle ? todayStr() : cycle + '-15';
-    const acc = (db.get('pocket_targets', cycle + '|' + pocket) || {}).payfrom || 'Bank Jago';
+    const tr = db.get('pocket_targets', cycle + '|' + pocket) || {};
+    const src = tr.payfrom || 'Bank Jago', dest = tr.savedTo || ''; // disimpan ke rekening pilihan (Bank Jago Saver / Bibit) via transfer
     db.put('saving_log', { id: slId, date, desc: 'Setoran ' + pocket, amount, pocket, onBudget: 1, talanganTo: '', note: 'otomatis dari Budget', talangan: '' });
-    saveTx({ id: txId, date, desc: pocket, category: 'Saving', amount: -Math.abs(amount), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
+    saveTx({ id: txId, date, desc: pocket, category: 'Saving', amount: -Math.abs(amount), account: src, to: dest, note: 'otomatis dari Budget', link: '' });
     return true;
   }
   if (db.get('saving_log', slId)) db.del('saving_log', slId);
@@ -80,6 +81,26 @@ export function recordGiving(line, on) {
     const date = todayStr().slice(0, 7) === line.cycle ? todayStr() : line.cycle + '-15';
     saveTx({ id: txId, date, desc: line.label, category: 'Giving', amount: -Math.abs(amt), account: acc, to: '', note: 'otomatis dari Budget', link: '' });
   } else if (db.get('transactions', txId)) db.del('transactions', txId);
+}
+/** Cicilan talangan: dicatat terpisah dari setoran murni kantong — transaksi kategori Saving
+ *  (desc "Talangan …") + talangan_pay (kurangi sisa) + saving_log. Rekening ikut setting kantong tujuannya. */
+export function recordTalangan(cycle, talId, amount, on) {
+  const slId = 'sl-bud-' + cycle + '-tal-' + talId, txId = 'tx-tal-' + cycle + '-' + talId, payId = talId + '|' + cycle;
+  if (on) {
+    const t = db.get('talangan', talId);
+    if (!(amount > 0) || !t) return false;
+    const pocket = t.usage || '', tr = db.get('pocket_targets', cycle + '|' + pocket) || {};
+    const src = tr.payfrom || 'Bank Jago', dest = tr.savedTo || '';
+    const date = todayStr().slice(0, 7) === cycle ? todayStr() : cycle + '-15';
+    db.put('saving_log', { id: slId, date, desc: 'Nabung ' + t.item, amount, pocket, onBudget: 1, talanganTo: '', note: 'otomatis dari Budget', talangan: talId });
+    db.put('talangan_pay', { id: payId, talangan: talId, cycle, amount });
+    saveTx({ id: txId, date, desc: 'Talangan ' + t.item, category: 'Saving', amount: -Math.abs(amount), account: src, to: dest, note: 'otomatis dari Budget', link: '' });
+    return true;
+  }
+  if (db.get('saving_log', slId)) db.del('saving_log', slId);
+  if (db.get('talangan_pay', payId)) db.del('talangan_pay', payId);
+  if (db.get('transactions', txId)) db.del('transactions', txId);
+  return true;
 }
 
 // ------------------------------------------------------------------ balances (Cycle setup / Real-time saldo)

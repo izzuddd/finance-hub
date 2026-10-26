@@ -231,8 +231,7 @@ function renderMonthly() {
         const tid = c2 + '|' + r.name, tr = db.get('pocket_targets', tid) || { id: tid, cycle: c2, pocket: r.name, target: 0, timing: '', payfrom: '' };
         db.put('pocket_targets', { ...tr, paid: 1 });
       } else {
-        db.put('saving_log', { id: 'sl-bud-' + c2 + '-tal-' + r.id, date: c2 + '-15', desc: 'Nabung ' + r.name, amount: amt, pocket: r.usage, onBudget: 1, talanganTo: '', note: 'setoran bulanan', talangan: r.id });
-        db.put('talangan_pay', { id: r.id + '|' + c2, talangan: r.id, cycle: c2, amount: amt });
+        M.recordTalangan(c2, r.id, amt, true); // transaksi Saving "Talangan …" + talangan_pay + saving_log
       }
       n++;
     });

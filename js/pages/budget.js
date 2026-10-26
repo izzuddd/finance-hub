@@ -47,7 +47,14 @@ export function render(el, S) {
   el.querySelectorAll('[data-line]').forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); editLine(n.dataset.line); }));
   el.querySelectorAll('[data-addline]').forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); editLine(null, n.dataset.addline, n.dataset.grp || ''); }));
   el.querySelectorAll('[data-paid]').forEach((n) => n.addEventListener('change', () => { const b = db.get('budget', n.dataset.paid); db.put('budget', { ...b, paid: n.checked ? 1 : 0 }); if (b.panel === 'GIVING') M.recordGiving(b, n.checked); }));
-  el.querySelectorAll('[data-ppaid]').forEach((n) => n.addEventListener('change', () => { setTarget(n.dataset.ppaid, { paid: n.checked ? 1 : 0 }); const ok = M.recordSaving(st.cycle, n.dataset.ppaid, Number(n.dataset.ppv) || 0, n.checked); if (n.checked && !ok) toast('Target kantong ini 0 — isi target dulu (✎)'); }));
+  el.querySelectorAll('[data-ppaid]').forEach((n) => n.addEventListener('change', () => {
+    const pocket = n.dataset.ppaid;
+    setTarget(pocket, { paid: n.checked ? 1 : 0 });
+    const ok = M.recordSaving(st.cycle, pocket, Number(n.dataset.ppv) || 0, n.checked); // setoran murni kantong
+    const tals = M.talanganOpen().filter((t) => t.usage === pocket);
+    tals.forEach((t) => M.recordTalangan(st.cycle, t.id, Math.round(t.perMonth), n.checked)); // cicilan talangan terpisah
+    if (n.checked && !ok && !tals.length) toast('Target kantong ini 0 — isi target dulu (✎)');
+  }));
   el.querySelectorAll('[data-target]').forEach((n) => n.addEventListener('click', () => editTarget(n.dataset.target)));
   el.querySelectorAll('[data-inc]').forEach((n) => n.addEventListener('click', () => editIncome(n.dataset.inc)));
   const bind = (id, fn) => { const n = $(id); if (n) n.onclick = fn; };
@@ -176,13 +183,14 @@ function editTarget(pocket) {
   openModal({ title: 'Target tabungan — ' + pocket, sub: cycleLabel(st.cycle, true),
     fields: [{ k: 'target', label: 'Target setoran rutin (IDR)', type: 'money', value: r.target || '', note: tnote },
       { k: 'timing', label: 'Dibayar dari gaji', type: 'select', options: [['', '—'], ['mid', 'Mid'], ['end', 'End']], value: r.timing || '' },
-      { k: 'payfrom', label: 'Dari rekening', type: 'select', options: [['', '—'], ['Mandiri', 'Mandiri'], ['Bank Jago', 'Bank Jago']], value: r.payfrom || '' },
-      { k: 'fwd', label: 'Pakai target ini sampai Desember tahun ini', type: 'check', value: false }],
+      { k: 'payfrom', label: 'Dibayar dari rekening', type: 'select', options: [['', '—'], ['Mandiri', 'Mandiri'], ['Bank Jago', 'Bank Jago']], value: r.payfrom || '' },
+      { k: 'savedTo', label: 'Disimpan ke rekening', type: 'select', options: [['', 'Bank Jago (default)'], ['Bank Jago Saver', 'Bank Jago Saver'], ['Bibit', 'Bibit'], ['Mandiri', 'Mandiri']], value: r.savedTo || '' },
+      { k: 'fwd', label: 'Pakai setting ini sampai Desember tahun ini', type: 'check', value: false }],
     onSave: (v) => {
-      setTarget(pocket, { target: Number(v.target) || 0, timing: v.timing, payfrom: v.payfrom });
+      setTarget(pocket, { target: Number(v.target) || 0, timing: v.timing, payfrom: v.payfrom, savedTo: v.savedTo });
       if (v.fwd) for (let c = addMonths(st.cycle, 1); c.slice(0, 4) === st.cycle.slice(0, 4); c = addMonths(c, 1)) {
         const id = c + '|' + pocket; const x = db.get('pocket_targets', id) || { id, cycle: c, pocket, paid: 0, timing: '', payfrom: '' };
-        db.put('pocket_targets', { ...x, target: Number(v.target) || 0 });
+        db.put('pocket_targets', { ...x, target: Number(v.target) || 0, savedTo: v.savedTo });
       }
       toast('Tersimpan ✓');
     } });
