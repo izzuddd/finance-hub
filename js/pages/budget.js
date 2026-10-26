@@ -51,7 +51,7 @@ export function render(el, S) {
     const pocket = n.dataset.ppaid;
     setTarget(pocket, { paid: n.checked ? 1 : 0 });
     const ok = M.recordSaving(st.cycle, pocket, Number(n.dataset.ppv) || 0, n.checked); // setoran murni kantong
-    const tals = M.talanganOpen().filter((t) => t.usage === pocket);
+    const tals = M.talanganOpen().filter((t) => t.usage === pocket && M.talanganDue(t, st.cycle));
     tals.forEach((t) => M.recordTalangan(st.cycle, t.id, Math.round(t.perMonth), n.checked)); // cicilan talangan terpisah
     if (n.checked && !ok && !tals.length) toast('Target kantong ini 0 — isi target dulu (✎)');
   }));

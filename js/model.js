@@ -185,7 +185,7 @@ export function savingBudget(cycle) {
   const anyDeposit = db.all('saving_log').some((l) => Number(l.onBudget) && String(l.date).slice(0, 7) === cycle);
   return pocketsList().map((p) => {
     const tr = db.get('pocket_targets', cycle + '|' + p.name) || {};
-    const tal = talanganOpen().filter((t) => t.usage === p.name);
+    const tal = talanganOpen().filter((t) => t.usage === p.name && talanganDue(t, cycle));
     const actual = pocketMonthActual(cycle, p.name);
     // like the sheet's SAVING panel: once deposits are logged for the cycle, the budget = actual deposits
     const value = anyDeposit ? actual : Number(tr.target) || 0;
@@ -241,6 +241,9 @@ function talanganAll_() {
   });
 }
 export const talanganOpen = () => talanganAll().filter((t) => !t.done);
+// A talangan is only "due" (payable) from its start month onward — a future-dated one
+// must not appear as payable in earlier cycles' Setoran bulanan / Budget.
+export const talanganDue = (t, cycle) => !t.start || cycle >= String(t.start).slice(0, 7);
 export function pockets() {
   const log = db.all('saving_log');
   const open = talanganOpen();

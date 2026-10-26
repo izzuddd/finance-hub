@@ -196,7 +196,7 @@ function moGroups(c) {
     if (p.name === M.KAMAR_POCKET && !amt && K) amt = Math.round(K.own || 0);
     amt = Math.round(amt) || 0;
     const pureDone = db.where('saving_log', (l) => Number(l.onBudget) && String(l.date).slice(0, 7) === c && l.pocket === p.name && !l.talangan).length > 0;
-    const tals = openTal.filter((t) => t.usage === p.name).map((t) => ({ key: 't:' + t.id, id: t.id, name: t.item, amt: Math.round(t.perMonth) || 0, done: !!db.get('talangan_pay', t.id + '|' + c) }));
+    const tals = openTal.filter((t) => t.usage === p.name && M.talanganDue(t, c)).map((t) => ({ key: 't:' + t.id, id: t.id, name: t.item, amt: Math.round(t.perMonth) || 0, done: !!db.get('talangan_pay', t.id + '|' + c) }));
     const pure = (amt > 0 || pureDone) ? { key: 'p:' + p.name, pocket: p.name, amt, done: pureDone } : null;
     if (pure || tals.length) groups.push({ name: p.name, pure, tals });
   });
@@ -267,10 +267,11 @@ function editTalangan(id) {
       { k: 'item', label: 'Item', type: 'text', value: t.item },
       { k: 'harga', label: 'Harga (IDR)', type: 'money', value: t.harga || '' },
       { k: 'duration', label: 'Durasi (bulan)', type: 'number', value: t.duration },
-      { k: 'start', label: 'Mulai cicil', type: 'date', value: String(t.start || '').slice(0, 10) },
+      { k: 'start', label: 'Mulai cicil (bulan pertama cicilan)', type: 'date', value: String(t.start || '').slice(0, 10) },
       { k: 'usage', label: 'Kantong yang menalangi', type: 'select', options: M.pocketsList().map((p) => p.name), value: t.usage },
-      { k: 'payCycle', label: 'Catat / ubah pembayaran untuk siklus', type: 'select', options: Array.from({ length: 30 }, (_, i) => addMonths(cur, 6 - i)).map((c) => [c, cycleLabel(c, true)]), value: cur },
-      { k: 'payVal', label: 'Jumlah dibayar (kosongkan = lewati, 0 = hapus)', type: 'money', value: '' },
+      { k: 'infoSplit', type: 'info', value: '↑ Jadwal cicilan otomatis dari "Mulai cicil" + "Durasi". ↓ Kolom di bawah HANYA untuk mencatat pembayaran yang sudah benar-benar disetor — bukan untuk mengatur kapan cicilan mulai (dropdown ini sengaja selalu balik ke siklus berjalan).' },
+      { k: 'payCycle', label: 'Catat pembayaran nyata — untuk siklus (opsional)', type: 'select', options: Array.from({ length: 30 }, (_, i) => addMonths(cur, 6 - i)).map((c) => [c, cycleLabel(c, true)]), value: cur },
+      { k: 'payVal', label: 'Jumlah yang benar-benar dibayar (kosongkan = tidak mencatat, 0 = hapus)', type: 'money', value: '' },
       { k: 'info', type: 'info', value: pays.length ? 'Sudah dibayar: ' + pays.sort((a, b) => (a.cycle < b.cycle ? -1 : 1)).map((p) => cycleLabel(p.cycle) + ' ' + fmtIDR(p.amount)).join(' · ') : 'Belum ada pembayaran' },
       { k: 'done', label: 'Lunas', type: 'check', value: !!Number(t.done) },
       { k: 'note', label: 'Catatan', type: 'text', value: t.note }],
