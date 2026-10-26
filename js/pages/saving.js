@@ -185,31 +185,41 @@ function editLog(id) {
 // Satu layar: semua kantong + talangan bulan itu, jumlah terisi otomatis dari target/cicilan.
 // Centang & ubah seperlunya, simpan sekaligus → masuk Log Tabungan + kurangi sisa talangan.
 export function monthlyDeposit(cycle) { st.moCycle = cycle || currentCycle(); renderMonthly(); }
-function moRows(c) {
+// Dikelompokkan per kantong: setoran murni + cicilan talangan yang masuk ke kantong itu.
+// Kantong dgn talangan tetap muncul walau target 0 (mis. Emergency Fund).
+function moGroups(c) {
   const K = M.kamarPlanFor(c);
-  const pockets = M.pocketsList().map((p) => {
+  const openTal = M.talanganOpen();
+  const groups = [];
+  M.pocketsList().forEach((p) => {
     let amt = M.pocketTarget(c, p.name);
     if (p.name === M.KAMAR_POCKET && !amt && K) amt = Math.round(K.own || 0);
-    const done = db.where('saving_log', (l) => Number(l.onBudget) && String(l.date).slice(0, 7) === c && l.pocket === p.name).length > 0;
-    return { key: 'p:' + p.name, name: p.name, amt: Math.round(amt) || 0, done };
-  }).filter((p) => p.amt > 0 || p.done);
-  const tals = M.talanganOpen().map((t) => ({ key: 't:' + t.id, id: t.id, name: t.item, usage: t.usage, amt: Math.round(t.perMonth) || 0, done: !!db.get('talangan_pay', t.id + '|' + c) }))
-    .filter((t) => t.amt > 0 || t.done);
-  return { pockets, tals };
+    amt = Math.round(amt) || 0;
+    const pureDone = db.where('saving_log', (l) => Number(l.onBudget) && String(l.date).slice(0, 7) === c && l.pocket === p.name && !l.talangan).length > 0;
+    const tals = openTal.filter((t) => t.usage === p.name).map((t) => ({ key: 't:' + t.id, id: t.id, name: t.item, amt: Math.round(t.perMonth) || 0, done: !!db.get('talangan_pay', t.id + '|' + c) }));
+    const pure = (amt > 0 || pureDone) ? { key: 'p:' + p.name, pocket: p.name, amt, done: pureDone } : null;
+    if (pure || tals.length) groups.push({ name: p.name, pure, tals });
+  });
+  return groups;
 }
 function renderMonthly() {
   const c = st.moCycle, m = $('modal');
-  const { pockets, tals } = moRows(c);
-  const line = (r) => `<div class="tx"><div class="l"><label class="inl"><input type="checkbox" data-mo="${r.key}" checked>
-      <span>${esc(r.name)}${r.done ? ' <span class="badge g">sudah</span>' : ''}${r.usage ? ' <span class="badge w">→ ' + esc(r.usage) + '</span>' : ''}</span></label></div>
-    <div class="r"><input data-moamt="${r.key}" inputmode="decimal" value="${r.amt || ''}" style="width:118px;text-align:right"></div></div>`;
-  const total = sum(pockets, (p) => p.amt) + sum(tals, (t) => t.amt);
+  const groups = moGroups(c);
+  const line = (key, label, amt, done) => `<div class="tx"><div class="l"><label class="inl"><input type="checkbox" data-mo="${key}" checked>
+      <span>${esc(label)}${done ? ' <span class="badge g">sudah</span>' : ''}</span></label></div>
+    <div class="r"><input data-moamt="${key}" inputmode="decimal" value="${amt || ''}" style="width:118px;text-align:right"></div></div>`;
+  const rows = [];
+  const body = groups.map((g) => {
+    let h = `<div class="grp">${esc(g.name)}</div>`;
+    if (g.pure) { h += line(g.pure.key, 'Setoran kantong', g.pure.amt, g.pure.done); rows.push({ key: g.pure.key, kind: 'p', pocket: g.pure.pocket }); }
+    g.tals.forEach((t) => { h += line(t.key, '↳ Talangan ' + t.name, t.amt, t.done); rows.push({ key: t.key, kind: 't', id: t.id }); });
+    return h;
+  }).join('');
+  const total = groups.reduce((a, g) => a + (g.pure ? g.pure.amt : 0) + sum(g.tals, (t) => t.amt), 0);
   m.innerHTML = `<div class="grab"></div><h2>Setoran bulanan</h2>
     <div class="cal-nav" style="justify-content:center;margin:2px 0 8px"><button class="btn small ghost" id="moPrev">‹</button><b>${cycleLabel(c, true)}</b><button class="btn small ghost" id="moNext">›</button></div>
-    <div class="sub">Jumlah terisi dari target/cicilan. Centang yang disetor, ubah bila perlu, lalu simpan sekaligus.</div>
-    <div class="mbody">${pockets.length ? '<div class="grp">Kantong</div>' + pockets.map(line).join('') : ''}
-      ${tals.length ? '<div class="grp">Talangan (cicilan ke kantong)</div>' + tals.map(line).join('') : ''}
-      ${!pockets.length && !tals.length ? empty('Tidak ada target/talangan bulan ini') : ''}
+    <div class="sub">Per kantong: setoran murni + cicilan talangannya. Centang yang disetor, ubah bila perlu, lalu simpan sekaligus.</div>
+    <div class="mbody">${body || empty('Tidak ada target/talangan bulan ini')}
       <div class="btotal"><span>Total setoran</span><span id="moTotal">${fmtIDR(total)}</span></div></div>
     <div class="mbtns"><button class="btn ghost" id="moCancel">Tutup</button><button class="btn" id="moSave">Simpan semua</button></div>`;
   $('overlay').classList.add('show');
@@ -221,18 +231,16 @@ function renderMonthly() {
   m.querySelectorAll('[data-mo]').forEach((el) => el.addEventListener('change', recalc));
   $('moSave').onclick = () => {
     const c2 = st.moCycle; let n = 0;
-    [...pockets, ...tals].forEach((r) => {
+    rows.forEach((r) => {
       const cb = m.querySelector(`input[data-mo="${r.key}"]`);
       if (!cb || !cb.checked) return;
       const amt = parseAmount(m.querySelector(`[data-moamt="${r.key}"]`).value);
       if (!amt) return;
-      if (r.key.startsWith('p:')) {
-        M.recordSaving(c2, r.name, amt, true); // saving_log + transaksi kategori Saving (Catat)
-        const tid = c2 + '|' + r.name, tr = db.get('pocket_targets', tid) || { id: tid, cycle: c2, pocket: r.name, target: 0, timing: '', payfrom: '' };
+      if (r.kind === 'p') {
+        M.recordSaving(c2, r.pocket, amt, true);
+        const tid = c2 + '|' + r.pocket, tr = db.get('pocket_targets', tid) || { id: tid, cycle: c2, pocket: r.pocket, target: 0, timing: '', payfrom: '' };
         db.put('pocket_targets', { ...tr, paid: 1 });
-      } else {
-        M.recordTalangan(c2, r.id, amt, true); // transaksi Saving "Talangan …" + talangan_pay + saving_log
-      }
+      } else M.recordTalangan(c2, r.id, amt, true);
       n++;
     });
     toast(n + ' setoran disimpan ✓');
