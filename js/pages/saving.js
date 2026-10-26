@@ -184,7 +184,7 @@ function editLog(id) {
 // ------------------------------------------------------------------ setoran bulanan (batch)
 // Satu layar: semua kantong + talangan bulan itu, jumlah terisi otomatis dari target/cicilan.
 // Centang & ubah seperlunya, simpan sekaligus → masuk Log Tabungan + kurangi sisa talangan.
-function monthlyDeposit() { st.moCycle = st.moCycle || currentCycle(); renderMonthly(); }
+export function monthlyDeposit(cycle) { st.moCycle = cycle || currentCycle(); renderMonthly(); }
 function moRows(c) {
   const K = M.kamarPlanFor(c);
   const pockets = M.pocketsList().map((p) => {

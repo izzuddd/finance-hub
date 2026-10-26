@@ -5,6 +5,7 @@ import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, fmtMoney, parseAmount, currentCycle, cycleLabel, cyclePeriod, addMonths, uid, sum, pct } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, collapsible, moneyCls, empty, lineChart } from '../ui.js';
 import { fmtShort, groupBy } from '../util.js';
+import { monthlyDeposit } from './saving.js';
 
 const st = { cycle: null, sub: 'budget', open: {}, sc: null };
 const PANELS = [['NEEDS', 'Needs'], ['WANTS', 'Wants'], ['GIVING', 'Giving']];
@@ -51,6 +52,7 @@ export function render(el, S) {
   el.querySelectorAll('[data-inc]').forEach((n) => n.addEventListener('click', () => editIncome(n.dataset.inc)));
   const bind = (id, fn) => { const n = $(id); if (n) n.onclick = fn; };
   bind('addIncome', () => editIncome(null));
+  bind('moDepB', () => monthlyDeposit(st.cycle));
   bind('simBtn', () => simulator(c));
   bind('classify', () => classify(c));
   bind('tlBuffer', () => tlBuffer(c));
@@ -95,7 +97,7 @@ function budgetView(c) {
     h += collapsible(k, `<div class="nm">${name.toUpperCase()}<span class="amt">${fmtIDR(totals[i])}</span></div><div class="pct">${pct(totals[i], allocated)}%</div>`, body, st.open[k]);
   });
   const active = sb.filter((s) => s.value || s.talTotal || s.auto), idle = sb.filter((s) => !(s.value || s.talTotal || s.auto));
-  const sbody = active.map((s) => {
+  const sbody = `<button class="btn ghost small" id="moDepB">✓ Setoran bulanan sekaligus</button>` + active.map((s) => {
     const plan = s.target + s.talTotal;
     const [role] = M.POCKET_ROLE[s.name] || [''];
     const detail = s.auto
