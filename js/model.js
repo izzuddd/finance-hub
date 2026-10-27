@@ -111,8 +111,18 @@ export function initialBalance(cycle, acc) {
 export function balanceMovement(cycle, acc) {
   let m = 0;
   for (const t of txOfCycle(cycle)) {
-    if (t.account === acc) m += Number(t.amount) || 0;
-    if (t.to === acc) m -= Number(t.amount) || 0;
+    const amt = Number(t.amount) || 0;
+    // A row with both `account` and `to` is a transfer: move |amt| from `account` to `to`,
+    // regardless of the stored sign. Most transfers store a negative amount; a few legacy/
+    // imported rows store it positive (e.g. a refund landing in Bank Jago Saver), which used
+    // to make the destination LOSE money instead of gaining it.
+    if (t.account && t.to) {
+      if (t.account === acc) m -= Math.abs(amt);
+      if (t.to === acc) m += Math.abs(amt);
+    } else {
+      if (t.account === acc) m += amt;
+      if (t.to === acc) m -= amt;
+    }
   }
   return m;
 }
