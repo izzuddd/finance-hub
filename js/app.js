@@ -28,11 +28,21 @@ const S = { page: 'add' };
 
 function show(page) {
   S.page = page;
+  document.body.dataset.page = page;
+  if (page !== 'add') document.body.removeAttribute('data-catat'); // only Catat uses the split layout
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
   $('pageTitle').textContent = PAGES[page].title;
   localStorage.setItem('hub.page', page);
   paint();
   window.scrollTo(0, 0);
+}
+// feed the wide/landscape CSS the real header + nav heights so the split panes fit the viewport exactly
+function syncLayout() {
+  const header = document.querySelector('header'), nav = document.querySelector('nav'), sb = $('syncBar');
+  if (!header || !nav) return;
+  const top = header.offsetHeight + (sb && sb.classList.contains('show') ? sb.offsetHeight : 0) + 6;
+  document.documentElement.style.setProperty('--main-top', top + 'px');
+  document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
 }
 function paint() {
   const el = $('view');
@@ -41,6 +51,7 @@ function paint() {
   window.scrollTo(0, y);
   const r = M.rateFor(currentCycle());
   $('rateLabel').textContent = r ? '₺1 = Rp ' + r : '';
+  syncLayout();
 }
 let paintTimer = null, slowTimer = null, syncStart = 0;
 const repaint = () => { if (document.querySelector('#overlay.show')) return; clearTimeout(paintTimer); paintTimer = setTimeout(paint, 30); };
@@ -52,6 +63,7 @@ async function boot() {
   $('verLabel').textContent = 'v' + CONFIG.APP_VERSION;
   $('verLabel').onclick = () => show('settings');
   document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.page)));
+  addEventListener('resize', syncLayout); addEventListener('orientationchange', () => setTimeout(syncLayout, 120));
   $('gear').onclick = () => show('settings');
   $('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });

@@ -4,25 +4,33 @@ import * as M from '../model.js';
 import { esc, fmtIDR, fmtTL, fmtMoney, parseAmount, todayStr, cycleOf, currentCycle, cycleLabel, cyclePeriod, addMonths, uid, sum } from '../util.js';
 import { $, toast, openModal, tile, tiles, card, row, bar, seg, bindSeg, moneyCls, empty } from '../ui.js';
 
-const st = { kind: 'expense', histCycle: null, histAcc: '', histAll: false, draft: {} };
+const st = { kind: 'expense', histCycle: null, histAcc: '', histAll: false, histSearch: '', draft: {} };
 
 export function render(el, S) {
   const cur = currentCycle();
   st.histCycle = st.histCycle || cur;
   const k = st.kind;
+  const isForm = k === 'expense' || k === 'income' || k === 'transfer';
+  // wide screens (PC browser / phone in landscape): input left, history right, each its own scroll
+  document.body.dataset.catat = isForm ? 'split' : 'single';
   let h = seg('kindSeg', [['overview', 'Ringkasan'], ['accounts', 'Saldo'], ['expense', 'Keluar'], ['income', 'Masuk'], ['transfer', 'Transfer']], k);
   if (k === 'overview') h += overview(cur);
   else if (k === 'accounts') h += balances(cur);
-  else h += form(k) + history();
+  else h += `<div class="catat-wrap"><div class="pane pane-input">${form(k)}</div><div class="pane pane-hist">${history()}</div></div>`;
   el.innerHTML = h;
   bindSeg(el, 'kindSeg', (v) => { saveDraft(); st.kind = v; render(el, S); });
-  if (k === 'expense' || k === 'income' || k === 'transfer') bindForm(el, S);
+  if (isForm) bindForm(el, S);
   el.querySelectorAll('[data-tx]').forEach((n) => n.addEventListener('click', () => editTx(n.dataset.tx)));
   el.querySelectorAll('[data-rate]').forEach((n) => n.addEventListener('click', () => editRate(n.dataset.rate, Number(n.dataset.rec) || 0)));
-  const hc = $('histCycle'), ha = $('histAcc'), hm = $('histMore');
+  const hc = $('histCycle'), ha = $('histAcc'), hm = $('histMore'), hs = $('histSearch');
   if (hc) hc.onchange = () => { st.histCycle = hc.value; render(el, S); };
   if (ha) ha.onchange = () => { st.histAcc = ha.value; render(el, S); };
   if (hm) hm.onclick = () => { st.histAll = !st.histAll; render(el, S); };
+  if (hs) hs.addEventListener('input', () => { // live search: only repaint the list, keep focus & form
+    st.histSearch = hs.value;
+    const ll = $('histList'); if (ll) ll.innerHTML = histListHTML();
+    const m = $('histMore'); if (m) m.style.display = normalize(st.histSearch) ? 'none' : '';
+  });
 }
 
 // ------------------------------------------------------------------ form
@@ -140,17 +148,37 @@ function save(el, S) {
 }
 
 // ------------------------------------------------------------------ history
+// smart search: case-insensitive, accent/space-insensitive, every keyword must appear somewhere
+function normalize(s) { return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim(); }
+function matchTx(t, tokens) {
+  const hay = normalize([t.desc, t.category, t.account, t.to, t.note, t.date, t.amount, Math.abs(t.amount), fmtIDR(Math.abs(M.txIDR(t))), t.link ? 'transfer' : ''].join(' '));
+  return tokens.every((tok) => hay.includes(tok));
+}
+function histListHTML() {
+  const q = normalize(st.histSearch), searching = !!q;
+  let list, total;
+  if (searching) { // search across ALL cycles
+    const tokens = q.split(' ');
+    list = M.txSorted(db.all('transactions')).filter((t) => (!st.histAcc || t.account === st.histAcc || t.to === st.histAcc) && matchTx(t, tokens));
+    total = list.length; list = list.slice(0, 100);
+  } else {
+    list = M.txSorted(M.txOfCycle(st.histCycle)).filter((t) => !st.histAcc || t.account === st.histAcc || t.to === st.histAcc);
+    total = list.length; if (!st.histAll) list = list.slice(0, 12);
+  }
+  const head = searching ? `<div class="note" style="margin:0 0 6px">Cari di semua riwayat — <b>${total}</b> cocok${total > 100 ? ' (100 teratas)' : ''}</div>` : '';
+  return head + (list.length ? list.map(txRow).join('') : empty(searching ? 'Tidak ada yang cocok' : 'Belum ada transaksi'));
+}
 function history() {
   const cycles = M.cyclesWithData().slice().reverse();
   if (!cycles.includes(st.histCycle)) cycles.unshift(st.histCycle);
-  let list = M.txSorted(M.txOfCycle(st.histCycle)).filter((t) => !st.histAcc || t.account === st.histAcc || t.to === st.histAcc);
-  const total = list.length;
-  if (!st.histAll) list = list.slice(0, 12);
-  return card('Riwayat', `<div class="flex3">
-      <select id="histCycle">${cycles.map((c) => `<option value="${c}"${c === st.histCycle ? ' selected' : ''}>${cycleLabel(c, true)}${c === currentCycle() ? ' (sekarang)' : ''}</option>`).join('')}</select>
+  const searching = !!normalize(st.histSearch);
+  return card('Riwayat', `<div class="hist-controls">
+      <input id="histSearch" type="search" inputmode="search" autocomplete="off" placeholder="🔍 Cari transaksi/transfer — mis. jago, migros, 150" value="${esc(st.histSearch || '')}">
+      <div class="flex3" style="margin-top:8px">
+      <select id="histCycle">${cycles.map((c) => `<option value="${c}"${c === st.histCycle ? ' selected' : ''}>${cycleLabel(c, true)}${c === currentCycle() ? ' (skr)' : ''}</option>`).join('')}</select>
       <select id="histAcc"><option value="">Semua akun</option>${M.accountNames().map((a) => `<option${a === st.histAcc ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
-      <button class="btn small ghost" id="histMore">${st.histAll ? 'Ringkas' : 'Semua (' + total + ')'}</button></div>
-    ${list.length ? list.map(txRow).join('') : empty('Belum ada transaksi')}`);
+      <button class="btn small ghost" id="histMore"${searching ? ' style="display:none"' : ''}>${st.histAll ? 'Ringkas' : 'Semua'}</button></div></div>
+    <div id="histList">${histListHTML()}</div>`);
 }
 export function txRow(t) {
   const tl = M.isTRY(t.account);

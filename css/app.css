@@ -228,4 +228,55 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .skel { height: 84px; border-radius: var(--radius); margin-bottom: 12px; background: linear-gradient(90deg, var(--card), var(--line), var(--card)); background-size: 200% 100%; animation: sk 1.2s infinite; }
 @keyframes sk { to { background-position: -200% 0; } }
 @media (min-width: 900px) { main { max-width: 760px; } }
+
+/* ================= v2.1 — wide / landscape layout (PC browser & phone rotated) ================= */
+@media (min-width: 720px) {
+  header, #syncBar { max-width: 1180px; }
+  main { max-width: 1180px; }
+  /* bottom nav: keep a full-width bar but don't over-stretch the buttons */
+  nav { justify-content: center; }
+  nav button { flex: 0 1 150px; }
+  /* modal becomes a centred dialog instead of a bottom sheet */
+  #overlay { align-items: center; }
+  #modal { max-width: 620px; border-radius: 18px; max-height: 88vh; }
+  .btn.fab-add { position: static; margin-left: auto; box-shadow: var(--shadow); }
+
+  /* --- every view except the Catat form: flow cards into responsive columns, use the width --- */
+  body:not([data-catat="split"]) main { column-width: 430px; column-gap: 16px; }
+  body:not([data-catat="split"]) main > .seg,
+  body:not([data-catat="split"]) main > .cyclebar,
+  body:not([data-catat="split"]) main > .ratebar,
+  body:not([data-catat="split"]) main > .hero,
+  body:not([data-catat="split"]) main > .tiles,
+  body:not([data-catat="split"]) main > .cal-bar,
+  body:not([data-catat="split"]) main > .cal-grid,
+  body:not([data-catat="split"]) main > .cal-year,
+  body:not([data-catat="split"]) main > .cal-legend,
+  body:not([data-catat="split"]) main > .chips,
+  body:not([data-catat="split"]) main > .subh,
+  body:not([data-catat="split"]) main > .grp,
+  body:not([data-catat="split"]) main > .note,
+  body:not([data-catat="split"]) main > .alloc,
+  body:not([data-catat="split"]) main > .btn,
+  body:not([data-catat="split"]) main > .evpick,
+  body:not([data-catat="split"]) main > .card:has(.tbl),
+  body:not([data-catat="split"]) main > .card:has(.lchart),
+  body:not([data-catat="split"]) main > .card:has(.ch),
+  body:not([data-catat="split"]) main > .card:has(.donutwrap) { column-span: all; }
+  body:not([data-catat="split"]) main > .card,
+  body:not([data-catat="split"]) main > .coll { break-inside: avoid; }
+
+  /* --- Catat form: input pane (left) + history pane (right), each scrolls on its own --- */
+  body[data-catat="split"] { padding-bottom: 0; overflow: hidden; }
+  body[data-catat="split"] main { height: calc(100dvh - var(--main-top, 92px) - var(--nav-h, 56px)); display: flex; flex-direction: column; overflow: hidden; }
+  body[data-catat="split"] main > .seg { flex: 0 0 auto; }
+  .catat-wrap { display: grid; grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.1fr); gap: 16px; flex: 1 1 auto; min-height: 0; }
+  .catat-wrap > .pane { overflow-y: auto; min-height: 0; padding: 2px 8px 28px 2px; }
+  .catat-wrap > .pane > .card { margin-bottom: 12px; }
+  .catat-wrap > .pane::-webkit-scrollbar { width: 9px; }
+  .catat-wrap > .pane::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+  .catat-wrap > .pane::-webkit-scrollbar-track { background: transparent; }
+  .catat-wrap .pane-hist .hist-controls { position: sticky; top: 0; background: var(--card); z-index: 3; padding: 2px 0 6px; }
+}
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
