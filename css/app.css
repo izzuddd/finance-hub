@@ -245,7 +245,8 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
   /* Catat form builds its own .catat-wrap; every other view gets .wide-top + .wide-cols from app.js */
   body[data-split="cols"], body[data-catat="split"] { padding-bottom: 0; overflow: hidden; }
   body[data-split="cols"] main, body[data-catat="split"] main {
-    height: calc(100dvh - var(--main-top, 92px) - var(--nav-h, 56px)); display: flex; flex-direction: column; overflow: hidden; }
+    height: calc(100dvh - var(--main-top, 92px) - var(--nav-h, 56px) - 16px); /* 16px breathing room above the bottom nav */
+    display: flex; flex-direction: column; overflow: hidden; }
   body[data-catat="split"] main > .seg, .wide-top { flex: 0 0 auto; }
   .wide-top > * { margin-bottom: 0; } /* controls already carry their own spacing */
 
