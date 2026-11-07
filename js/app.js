@@ -50,6 +50,7 @@ const wideMQ = matchMedia('(min-width: 720px)');
 let lastWide = wideMQ.matches;
 const TOPBAND = new Set(['seg', 'cyclebar', 'ratebar', 'hero', 'tiles', 'cal-bar', 'chips']);
 function applyWideLayout(el) {
+  if (el.querySelector(':scope > .wide-cols')) return; // already split (our own mutation) — leave it
   document.body.removeAttribute('data-split');
   if (!wideMQ.matches) return;
   if (S.page === 'add' && document.body.dataset.catat === 'split') return; // Catat form builds its own split
@@ -98,6 +99,8 @@ async function boot() {
   $('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
   new MutationObserver(() => { if (!document.querySelector('#overlay.show')) repaint(); }).observe($('overlay'), { attributes: true, attributeFilter: ['class'] });
+  // pages re-render themselves on sub-tab clicks (bypassing paint): re-run the split whenever #view's children change
+  new MutationObserver(() => applyWideLayout($('view'))).observe($('view'), { childList: true });
   db.onChange(repaint);
   sync.setSummaryBuilder(M.summaryTable);
   $('syncBar').onclick = () => $('syncDot').click();
