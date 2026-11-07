@@ -44,10 +44,39 @@ function syncLayout() {
   document.documentElement.style.setProperty('--main-top', top + 'px');
   document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
 }
+// wide screens: split a page's flat card stream into two independently-scrolling columns.
+// Leading page controls (seg/cyclebar/tiles/…) stay full-width on top; the rest is balanced by height.
+const wideMQ = matchMedia('(min-width: 720px)');
+let lastWide = wideMQ.matches;
+const TOPBAND = new Set(['seg', 'cyclebar', 'ratebar', 'hero', 'tiles', 'cal-bar', 'chips']);
+function applyWideLayout(el) {
+  document.body.removeAttribute('data-split');
+  if (!wideMQ.matches) return;
+  if (S.page === 'add' && document.body.dataset.catat === 'split') return; // Catat form builds its own split
+  const kids = [...el.children];
+  let i = 0; const top = [];
+  while (i < kids.length && [...kids[i].classList].some((c) => TOPBAND.has(c))) top.push(kids[i++]);
+  const rest = kids.slice(i);
+  if (rest.length < 2) return; // not worth splitting
+  const heights = rest.map((n) => n.offsetHeight); // measure while still live
+  const mk = (cls) => Object.assign(document.createElement('div'), { className: cls });
+  const wrapTop = top.length ? mk('wide-top') : null;
+  const cols = mk('wide-cols'), colL = mk('pane col-l'), colR = mk('pane col-r');
+  cols.append(colL, colR);
+  top.forEach((n) => wrapTop.appendChild(n));
+  let hL = 0, hR = 0;
+  rest.forEach((n, k) => { if (hL <= hR) { colL.appendChild(n); hL += heights[k] + 12; } else { colR.appendChild(n); hR += heights[k] + 12; } });
+  if (wrapTop) el.appendChild(wrapTop);
+  el.appendChild(cols);
+  document.body.dataset.split = 'cols';
+}
 function paint() {
   const el = $('view');
   const y = window.scrollY;
+  const paneScroll = [...el.querySelectorAll('.pane')].map((p) => p.scrollTop); // keep per-column scroll across repaints
   try { PAGES[S.page].mod.render(el, S); } catch (e) { console.error(e); el.innerHTML = `<div class="card">Terjadi kesalahan: ${e.message}</div>`; }
+  applyWideLayout(el);
+  el.querySelectorAll('.pane').forEach((p, i) => { if (paneScroll[i] != null) p.scrollTop = paneScroll[i]; });
   window.scrollTo(0, y);
   const r = M.rateFor(currentCycle());
   $('rateLabel').textContent = r ? '₺1 = Rp ' + r : '';
@@ -63,7 +92,8 @@ async function boot() {
   $('verLabel').textContent = 'v' + CONFIG.APP_VERSION;
   $('verLabel').onclick = () => show('settings');
   document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.page)));
-  addEventListener('resize', syncLayout); addEventListener('orientationchange', () => setTimeout(syncLayout, 120));
+  const onResize = () => { syncLayout(); if (wideMQ.matches !== lastWide) { lastWide = wideMQ.matches; paint(); } };
+  addEventListener('resize', onResize); addEventListener('orientationchange', () => setTimeout(onResize, 140));
   $('gear').onclick = () => show('settings');
   $('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
