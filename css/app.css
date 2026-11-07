@@ -248,7 +248,8 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
     height: calc(100dvh - var(--main-top, 92px) - var(--nav-h, 56px) - 16px); /* 16px breathing room above the bottom nav */
     display: flex; flex-direction: column; overflow: hidden; }
   body[data-catat="split"] main > .seg, .wide-top { flex: 0 0 auto; }
-  .wide-top > * { margin-bottom: 0; } /* controls already carry their own spacing */
+  .wide-top { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; } /* breathing room below the tab bar */
+  .wide-top > * { margin-bottom: 0; }
 
   .catat-wrap, .wide-cols { display: grid; gap: 16px; flex: 1 1 auto; min-height: 0; }
   .catat-wrap { grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.1fr); }
