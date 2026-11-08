@@ -144,7 +144,13 @@ function planView(D) {
     else if (!last) groups.push({ key: '', items: [it] });
     else last.items.push(it);
   });
-  const body = groups.map((g) => (g.key ? `<div class="grp gsum"><span>${esc(g.key)}</span><span class="st">${fmtIDR(sum(g.items, (x) => Number(x.price) || 0))}</span></div>` : '') + g.items.map(itemRow).join('')).join('');
+  const body = groups.map((g) => {
+    const rows = g.items.map(itemRow).join('');
+    if (!g.key) return rows; // ungrouped leading items — no collapsible header
+    const gid = 'tItG-' + g.key.replace(/\W+/g, '').toLowerCase();
+    if (st.open[gid] === undefined) st.open[gid] = true; // default expanded; each Judul grup can collapse/expand
+    return collapsible(gid, `<div class="nm">${esc(g.key)}</div><div class="amt">${fmtIDR(sum(g.items, (x) => Number(x.price) || 0))}</div>`, rows, st.open[gid]);
+  }).join('');
   h += card('Item', body + '<button class="btn ghost fab-add" id="addItem">+ Item</button>');
   return h;
 }
