@@ -110,6 +110,7 @@ export function initialBalance(cycle, acc) {
 }
 export function balanceMovement(cycle, acc) {
   let m = 0;
+  const rate = rateFor(cycle);
   for (const t of txOfCycle(cycle)) {
     const amt = Number(t.amount) || 0;
     // A row with both `account` and `to` is a transfer: move |amt| from `account` to `to`,
@@ -117,8 +118,18 @@ export function balanceMovement(cycle, acc) {
     // imported rows store it positive (e.g. a refund landing in Bank Jago Saver), which used
     // to make the destination LOSE money instead of gaining it.
     if (t.account && t.to) {
-      if (t.account === acc) m -= Math.abs(amt);
-      if (t.to === acc) m += Math.abs(amt);
+      const native = Math.abs(amt); // stored in the SOURCE account's currency
+      if (t.account === acc) m -= native;
+      if (t.to === acc) {
+        // Cross-currency transfer (e.g. Rp → ₺ AKBANK top-up): credit the destination in ITS OWN
+        // currency, converted at the cycle rate, so the money is conserved in IDR terms. Without
+        // this, Rp 5.000.000 into AKBANK was booked as ₺5.000.000 (≈ Rp 1,8 M at the rate).
+        const srcTRY = isTRY(t.account), dstTRY = isTRY(t.to);
+        let credit = native;
+        if (srcTRY && !dstTRY) credit = native * rate;              // ₺ → Rp
+        else if (!srcTRY && dstTRY) credit = rate ? native / rate : 0; // Rp → ₺
+        m += credit;
+      }
     } else {
       if (t.account === acc) m += amt;
       if (t.to === acc) m -= amt;

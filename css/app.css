@@ -1,4 +1,6 @@
 /* ---- LaTeX-style display font (Computer Modern). Loads online; local installs or serif fall back cleanly offline. ---- */
+/* STIX Two Text — the math-companion serif: numerals are lining & tabular (every digit the same height), the LaTeX math look. Used for all money figures. */
+@import url('https://fonts.googleapis.com/css2?family=STIX+Two+Text:wght@400;500;600;700&display=swap');
 @font-face { font-family: 'CM Serif'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font/fonts/Serif/cmunrm.woff') format('woff'); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: 'CM Serif'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font/fonts/Serif/cmunbx.woff') format('woff'); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: 'CM Serif'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font/fonts/Serif/cmunti.woff') format('woff'); font-weight: 400; font-style: italic; font-display: swap; }
@@ -11,6 +13,7 @@
   --good: #3ecf8e; --good-soft: #0f2d23; --bad: #ff6b6b; --bad-soft: #3a1722; --warn: #e2b04a; --warn-soft: #3a2f16;
   --glass: rgba(16, 24, 44, .68); --glass-line: rgba(255, 255, 255, .09);
   --serif: 'Latin Modern Roman', 'CMU Serif', 'CM Serif', Georgia, 'Times New Roman', serif;
+  --num: 'STIX Two Text', 'Cambria', 'Times New Roman', Georgia, serif;
   --sans: -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
   --radius: 16px; --shadow: 0 2px 10px rgba(0, 0, 0, .35);
   color-scheme: dark;
@@ -27,6 +30,9 @@ body {
 }
 /* data entry & dense numeric tables stay in a crisp sans; everything else wears the LaTeX serif */
 input, select, textarea, .amount-input, .mathbar button, .tbl, .seg button, nav button, .badge, code { font-family: var(--sans); }
+/* money figures use the math serif so digits are lining & tabular (all the same height, no hanging 3/4/5/7/9) */
+.hh-total, .hh-chip b, .ac-bal, .ac-sub, .rk-sisa b, .hero .big, .tile .v,
+.comp .row1 span, .comp .row2 span, .comp .s span { font-family: var(--num); font-variant-numeric: lining-nums tabular-nums; }
 button { font: inherit; color: inherit; }
 a { color: var(--brand); }
 
@@ -334,6 +340,13 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .ac-kind { font-size: 10px; font-family: var(--sans); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
 .ac-bal { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 7px; position: relative; z-index: 1; }
 .ac-sub { font-size: 11.5px; font-family: var(--sans); margin-top: 1px; position: relative; z-index: 1; }
+/* "Lihat semua akun" toggle + the collapsed extra cards */
+.see-all { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--glass-line); border-radius: 12px; background: rgba(255,255,255,.04); color: var(--ink-2); font-family: var(--sans); font-size: 13px; cursor: pointer; }
+.see-all:hover { border-color: var(--brand); color: var(--ink); background: var(--brand-soft); }
+.see-all .chev { transition: transform .2s ease; font-size: 14px; }
+.see-all.open .chev { transform: rotate(180deg); }
+.acct-extra { margin-top: 10px; }
+.acct-extra[hidden] { display: none; }
 
 /* Ringkasan — "sisa" headline row */
 .rk-sisa { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }

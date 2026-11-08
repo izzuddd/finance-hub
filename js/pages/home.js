@@ -53,6 +53,10 @@ function acctTheme(name) {
 }
 
 const nav = (p) => window.__hub && window.__hub.nav(p);
+// which accounts show immediately on Beranda; the rest hide behind "Lihat semua akun"
+const PRIMARY = ['AKBANK', 'Mandiri', 'Bank Jago'];
+// pin a card to a column for the landscape 2-column split (app.js reads data-col)
+const pin = (html, col) => html.replace('<div class="card"', `<div class="card" data-col="${col}"`);
 
 function acctCard(a, hide) {
   const [bg, fg, sub] = acctTheme(a.name);
@@ -83,6 +87,9 @@ export function render(el) {
   const t = M.totals(cyc);
   const s = M.cycleSummary(cyc);
   const inc = M.incomeTotal(cyc) || s.income;
+  // TOTAL SALDO = Pemasukan − Pengeluaran this cycle (real-time; drops as expenses are recorded).
+  // fmtIDR rounds, so no decimals are ever shown.
+  const net = inc - s.totalExpenses;
   const hide = localStorage.getItem('hub.hideBal') === '1';
   const money = (v) => (hide ? 'Rp ••••••' : fmtIDR(v));
   const h = new Date().getHours();
@@ -97,7 +104,7 @@ export function render(el) {
       <button class="hh-eye" data-eye aria-label="Sembunyikan / tampilkan saldo">${hide ? ICON.eyeOff : ICON.eye}</button>
     </div>
     <div class="hh-label">TOTAL SALDO</div>
-    <div class="hh-total">${money(t.total)}</div>
+    <div class="hh-total">${money(net)}</div>
     <div class="hh-sub">
       <div class="hh-chip up"><span>▲ Pemasukan</span><b>${hide ? 'Rp ••••' : fmtIDR(inc)}</b></div>
       <div class="hh-chip down"><span>▼ Pengeluaran</span><b>${hide ? 'Rp ••••' : fmtIDR(s.totalExpenses)}</b></div>
@@ -106,13 +113,28 @@ export function render(el) {
   const grid = card('', `<div class="hf-grid">${FEATURES.map(([pg, label, ic]) =>
     `<button class="hf" data-nav="${pg}"><span class="hf-ic">${ICON[ic]}</span><span class="hf-l">${esc(label)}</span></button>`).join('')}</div>`);
 
-  const saldo = card('Saldo Real Time', `<div class="acct-cards">${t.list.map((a) => acctCard(a, hide)).join('')}</div>`
-    + `<div class="note">Saldo awal siklus diatur di Budget → Siklus; kalau kosong dipakai saldo akhir siklus lalu.</div>`);
+  // Saldo Real Time: only the main accounts show at once; the rest unfold under "Lihat semua akun".
+  const prim = PRIMARY.map((n) => t.list.find((a) => a.name === n)).filter(Boolean);
+  const extra = t.list.filter((a) => !prim.includes(a));
+  const saldoBody = `<div class="acct-cards">${prim.map((a) => acctCard(a, hide)).join('')}</div>`
+    + (extra.length ? `<button class="see-all" data-seeall><span class="lbl">Lihat semua akun (${extra.length})</span><span class="chev">⌄</span></button>
+      <div class="acct-extra" hidden><div class="acct-cards">${extra.map((a) => acctCard(a, hide)).join('')}</div></div>` : '')
+    + `<div class="note">Saldo awal siklus diatur di Budget → Siklus; kalau kosong dipakai saldo akhir siklus lalu.</div>`;
+  const saldo = card('Saldo Real Time', saldoBody);
 
-  el.innerHTML = hero + grid + saldo + ringkasan(cyc);
+  // Landscape split: left column = menu + saldo, right column = ringkasan (hero spans the top band).
+  el.innerHTML = hero + pin(grid, 'l') + pin(saldo, 'l') + pin(ringkasan(cyc), 'r');
 
   el.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => nav(b.dataset.nav)));
   const eye = el.querySelector('[data-eye]');
   if (eye) eye.onclick = () => { localStorage.setItem('hub.hideBal', hide ? '0' : '1'); window.__hub.refresh(); };
   el.querySelectorAll('[data-cyc]').forEach((b) => (b.onclick = () => { homeCyc = addMonths(cyc, b.dataset.cyc === 'next' ? 1 : -1); window.__hub.refresh(); }));
+  const sa = el.querySelector('[data-seeall]');
+  if (sa) sa.onclick = () => {
+    const box = el.querySelector('.acct-extra');
+    const open = box.hasAttribute('hidden');
+    box.toggleAttribute('hidden', !open);
+    sa.classList.toggle('open', open);
+    sa.querySelector('.lbl').textContent = open ? 'Sembunyikan' : `Lihat semua akun (${extra.length})`;
+  };
 }
