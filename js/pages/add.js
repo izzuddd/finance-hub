@@ -9,17 +9,14 @@ const st = { kind: 'expense', histCycle: null, histAcc: '', histAll: false, hist
 export function render(el, S) {
   const cur = currentCycle();
   st.histCycle = st.histCycle || cur;
-  const k = st.kind;
-  const isForm = k === 'expense' || k === 'income' || k === 'transfer';
+  // only three entry types now; Ringkasan & Saldo live on Beranda
+  const k = (st.kind === 'income' || st.kind === 'transfer') ? st.kind : 'expense';
+  st.kind = k;
   // wide screens (PC browser / phone in landscape): input left, history right, each its own scroll
-  document.body.dataset.catat = isForm ? 'split' : 'single';
-  let h = seg('kindSeg', [['overview', 'Ringkasan'], ['accounts', 'Saldo'], ['expense', 'Keluar'], ['income', 'Masuk'], ['transfer', 'Transfer']], k);
-  if (k === 'overview') h += overview(cur);
-  else if (k === 'accounts') h += balances(cur);
-  else h += `<div class="catat-wrap"><div class="pane pane-input">${form(k)}</div><div class="pane pane-hist">${history()}</div></div>`;
-  el.innerHTML = h;
-  bindSeg(el, 'kindSeg', (v) => { saveDraft(); st.kind = v; render(el, S); });
-  if (isForm) bindForm(el, S);
+  document.body.dataset.catat = 'split';
+  el.innerHTML = `<div class="catat-wrap"><div class="pane pane-input">${form(k)}</div><div class="pane pane-hist">${history()}</div></div>`;
+  bindSeg(el, 'typeSeg', (v) => { saveDraft(); st.kind = v; render(el, S); });
+  bindForm(el, S);
   el.querySelectorAll('[data-tx]').forEach((n) => n.addEventListener('click', () => editTx(n.dataset.tx)));
   el.querySelectorAll('[data-rate]').forEach((n) => n.addEventListener('click', () => editRate(n.dataset.rate, Number(n.dataset.rec) || 0)));
   const hc = $('histCycle'), ha = $('histAcc'), hm = $('histMore'), hs = $('histSearch');
@@ -40,6 +37,7 @@ function form(k) {
   const from = d.from || (k === 'transfer' ? 'Mandiri' : 'AKBANK');
   const date = d.date || todayStr();
   let h = '<div class="card">';
+  h += seg('typeSeg', [['expense', 'Keluar'], ['income', 'Masuk'], ['transfer', 'Transfer']], k);
   h += rateCard(cycleOf(date));
   h += `<label>Jumlah — bisa rumus, mis. 1155.88-240-150</label><input id="fAmount" class="amount-input" inputmode="decimal" autocomplete="off" value="${esc(d.amount || '')}" placeholder="0"><div class="hint" id="convHint"></div>`;
   h += `<div class="flex2"><div><label>Tanggal</label><input id="fDate" type="date" value="${date}"><div class="note" id="cycleNote"></div></div>
@@ -204,26 +202,3 @@ export function editTx(id) {
     onDelete: () => { db.del('transactions', id); toast('Dihapus ✓'); } });
 }
 
-// ------------------------------------------------------------------ balances
-function balances(cur) {
-  const T = M.totals(cur);
-  let h = tiles([tile('Total saldo', fmtIDR(T.total)), tile('Bisa dipakai', fmtIDR(T.usable))], 'two');
-  h += card('Saldo real-time · siklus ' + cycleLabel(cur, true), T.list.map((a) => row(esc(a.name) + (a.usable === 0 ? ' <span class="badge">tabungan</span>' : ''),
-    a.currency === 'TRY' ? '≈ ' + fmtIDR(a.idr) : esc(a.kind), `<b class="${moneyCls(a.value)}">${fmtMoney(a.value, a.currency)}</b>`)).join('') +
-    '<div class="note">Saldo awal siklus diisi di Budget → Siklus. Kalau kosong, dipakai saldo akhir siklus lalu.</div>');
-  return h;
-}
-
-// ------------------------------------------------------------------ overview
-function overview(cur) {
-  const s = M.cycleSummary(cur), b = M.componentBudgets(cur), inc = M.incomeTotal(cur) || s.income;
-  let h = `<div class="note" style="margin:2px 0 8px">Siklus ${cyclePeriod(cur)}</div>`;
-  h += tiles([tile('Pemasukan', fmtIDR(inc)), tile('Pengeluaran', fmtIDR(s.totalExpenses)), tile('Sisa', `<span class="${moneyCls(inc - s.totalExpenses)}">${fmtIDR(inc - s.totalExpenses)}</span>`)]);
-  const comps = [['Needs', s.needs, b.needs, M.subsOf(cur, 'Needs')], ['Wants', s.wants, b.wants, M.subsOf(cur, 'Wants')], ['Saving', s.saving, b.saving, []], ['Giving', s.giving, b.giving, []]];
-  h += card('Budget vs aktual', comps.map(([n, spent, bud, subs]) => `<details class="comp"><summary><div class="row1"><span>${n}</span><span>${fmtIDR(spent)}</span></div>
-      <div class="row2"><span>dari ${fmtIDR(bud)}</span><span class="${bud - spent < 0 ? 'neg' : ''}">sisa ${fmtIDR(bud - spent)}</span></div>${bar(spent, bud, bud > 0 && spent > bud)}</summary>
-      ${subs.filter((x) => x.spent).map((x) => `<div class="s"><span>${esc(x.name)}</span><span>${fmtIDR(x.spent)}</span></div>`).join('')}</details>`).join(''));
-  const recent = M.txSorted(M.txOfCycle(cur)).slice(0, 8);
-  h += card('Transaksi terbaru', recent.length ? recent.map(txRow).join('') : empty('Belum ada'));
-  return h;
-}

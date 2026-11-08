@@ -317,8 +317,38 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .hf-l { font-size: 11.5px; font-weight: 600; text-align: center; line-height: 1.15; }
 @media (max-width: 380px) { .hf-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (min-width: 720px) { .hf-grid { grid-template-columns: repeat(4, 1fr); } }
-.jatah-card { display: flex; align-items: center; gap: 12px; }
-.jatah-card .jc-l { flex: 1; min-width: 0; }
-.jatah-card .jc-big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Beranda period switcher */
+.hh-period { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; background: rgba(255,255,255,.07); border: 1px solid var(--glass-line); border-radius: 999px; padding: 3px 4px; }
+.hh-period .hp-btn { background: none; border: 0; color: var(--ink); font-size: 18px; line-height: 1; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; }
+.hh-period .hp-btn:hover { background: rgba(255,255,255,.12); }
+.hh-period .hp-lbl { font-size: 12.5px; font-family: var(--sans); color: var(--ink-2); min-width: 120px; text-align: center; }
+
+/* Saldo Real Time — ATM-card tiles, one signature colour per bank */
+.acct-cards { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 520px) { .acct-cards { grid-template-columns: 1fr 1fr; } }
+.acct-card { position: relative; border-radius: 15px; padding: 12px 15px 12px; box-shadow: 0 6px 16px rgba(0,0,0,.38); overflow: hidden; min-height: 92px; }
+.acct-card::after { content: ''; position: absolute; right: -34px; top: -34px; width: 118px; height: 118px; border-radius: 50%; background: rgba(255,255,255,.1); }
+.ac-chip { width: 30px; height: 21px; border-radius: 5px; background: linear-gradient(135deg, rgba(255,255,255,.8), rgba(255,255,255,.3)); opacity: .6; margin-bottom: 8px; position: relative; z-index: 1; }
+.ac-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; position: relative; z-index: 1; }
+.ac-name { font-weight: 700; font-size: 14.5px; letter-spacing: .2px; }
+.ac-kind { font-size: 10px; font-family: var(--sans); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+.ac-bal { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 7px; position: relative; z-index: 1; }
+.ac-sub { font-size: 11.5px; font-family: var(--sans); margin-top: 1px; position: relative; z-index: 1; }
+
+/* Ringkasan — "sisa" headline row */
+.rk-sisa { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.rk-sisa span { color: var(--ink-2); font-size: 13px; }
+.rk-sisa b { font-size: 18px; font-variant-numeric: tabular-nums; }
+
+/* More — menu list */
+.more-list { display: flex; flex-direction: column; gap: 8px; }
+.more-row { display: flex; align-items: center; gap: 13px; padding: 12px; border: 1px solid var(--glass-line); border-radius: 13px; background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015)); color: var(--ink); cursor: pointer; text-align: left; }
+.more-row:hover { border-color: var(--brand); background: var(--brand-soft); }
+.mr-ic { width: 40px; height: 40px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: rgba(77,141,255,.14); color: var(--brand); }
+.mr-ic svg { width: 22px; height: 22px; }
+.mr-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mr-l { font-weight: 700; font-size: 15px; }
+.mr-d { font-size: 12px; color: var(--ink-3); font-family: var(--sans); }
+.mr-chev { color: var(--ink-3); font-size: 20px; flex: 0 0 auto; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -6,6 +6,8 @@ import { setCycleStartDay, cycleLabel, currentCycle, fmtIDR } from './util.js';
 import { $, toast, closeModal, initMathBar } from './ui.js';
 import { CONFIG } from './config.js';
 import * as home from './pages/home.js';
+import * as transaksi from './pages/transaksi.js';
+import * as more from './pages/more.js';
 import * as add from './pages/add.js';
 import * as budget from './pages/budget.js';
 import * as saving from './pages/saving.js';
@@ -17,6 +19,8 @@ import * as kredit from './pages/kredit.js';
 
 const PAGES = {
   home: { title: 'Finance Hub', mod: home },
+  transaksi: { title: 'Transaksi', mod: transaksi },
+  more: { title: 'Menu Lain', mod: more },
   insight: { title: 'Insight', mod: insight },
   saving: { title: 'Tabungan', mod: saving },
   kredit: { title: 'Kredit', mod: kredit },
