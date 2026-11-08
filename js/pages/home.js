@@ -61,6 +61,9 @@ const nav = (p) => window.__hub && window.__hub.nav(p);
 const PRIMARY = ['AKBANK', 'Mandiri', 'Bank Jago'];
 // pin a card to a column for the landscape 2-column split (app.js reads data-col)
 const pin = (html, col) => html.replace('<div class="card"', `<div class="card" data-col="${col}"`);
+// Scroll the account strip by ~one and a half cards. Assign scrollLeft directly (always works); the
+// strip's CSS scroll-behavior:smooth animates it in normal use without depending on rAF/scrollBy-smooth.
+const scrollStrip = (el, dir) => { el.scrollLeft = Math.max(0, Math.min(el.scrollLeft + dir * 280, el.scrollWidth - el.clientWidth)); };
 
 function acctCard(a, hide) {
   const [bg, fg, sub] = acctTheme(a.name);
@@ -100,26 +103,28 @@ export function render(el) {
   const greet = h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 19 ? 'Selamat sore' : 'Selamat malam';
   const name = localStorage.getItem('hub.name') || 'Izud';
 
-  // Saldo Real Time lives in the hero (highlighted strip under the period switcher). By default only
-  // AKBANK / Mandiri / Bank Jago show; "More" unfolds the rest to the right as a left/right scroll row.
+  // Saldo Real Time card (right column, top): AKBANK / Mandiri / Bank Jago by default; "More" unfolds
+  // the rest as a left/right scroll row, with ‹ › arrows on desktop (no touch swipe there).
   const prim = PRIMARY.map((n) => t.list.find((a) => a.name === n)).filter(Boolean);
   const rest = t.list.filter((a) => !prim.includes(a));
   const shown = saldoOpen ? [...prim, ...rest] : prim;
   const moreBtn = rest.length
     ? `<button class="acct-more" data-saldomore aria-label="${saldoOpen ? 'Ringkas' : 'Lihat semua akun'}"><span class="chev">${saldoOpen ? '‹' : '›'}</span><span>${saldoOpen ? 'Ringkas' : 'More (' + rest.length + ')'}</span></button>`
     : '';
-  const strip = `<div class="hh-saldo">
-    <div class="hh-saldo-lbl">SALDO REAL TIME</div>
-    <div class="hero-saldo">${shown.map((a) => acctCard(a, hide)).join('')}${moreBtn}</div></div>`;
+  const arrows = saldoOpen && rest.length
+    ? `<span class="saldo-nav"><button class="sn-btn" data-sscroll="-1" aria-label="Geser kiri">‹</button><button class="sn-btn" data-sscroll="1" aria-label="Geser kanan">›</button></span>`
+    : '';
+  const saldoCard = card('Saldo Real Time', `<div class="hero-saldo">${shown.map((a) => acctCard(a, hide)).join('')}${moreBtn}</div>`, arrows);
 
-  const hero = `<div class="hero home-hero">
+  // Left column, top: greeting / period / total / income-expense. A plain card (no "hero" class) so it
+  // takes its place in the left column instead of becoming a full-width band — the page splits in two from the top.
+  const heroInfo = `<div class="home-hero" data-col="l">
     <div class="hh-top">
       <div><div class="hh-greet">${greet},</div><div class="hh-name">${esc(name)}!</div>
         <div class="hh-period"><button class="hp-btn" data-cyc="prev" aria-label="Bulan sebelumnya">‹</button><span class="hp-lbl">${cycleLabel(cyc, true)}</span><button class="hp-btn" data-cyc="next" aria-label="Bulan berikutnya">›</button></div>
       </div>
       <button class="hh-eye" data-eye aria-label="Sembunyikan / tampilkan saldo">${hide ? ICON.eyeOff : ICON.eye}</button>
     </div>
-    ${strip}
     <div class="hh-label">TOTAL SALDO</div>
     <div class="hh-total">${money(net)}</div>
     <div class="hh-sub">
@@ -130,8 +135,8 @@ export function render(el) {
   const grid = card('', `<div class="hf-grid">${FEATURES.map(([pg, label, ic]) =>
     `<button class="hf" data-nav="${pg}"><span class="hf-ic">${ICON[ic]}</span><span class="hf-l">${esc(label)}</span></button>`).join('')}</div>`);
 
-  // Landscape split: left column = menu, right column = ringkasan (hero + its saldo strip span the top).
-  el.innerHTML = hero + pin(grid, 'l') + pin(ringkasan(cyc), 'r');
+  // Two columns from the very top: left = info + menu, right = Saldo Real Time + ringkasan.
+  el.innerHTML = heroInfo + pin(saldoCard, 'r') + pin(grid, 'l') + pin(ringkasan(cyc), 'r');
 
   el.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => nav(b.dataset.nav)));
   const eye = el.querySelector('[data-eye]');
@@ -139,4 +144,6 @@ export function render(el) {
   el.querySelectorAll('[data-cyc]').forEach((b) => (b.onclick = () => { homeCyc = addMonths(cyc, b.dataset.cyc === 'next' ? 1 : -1); window.__hub.refresh(); }));
   const mb = el.querySelector('[data-saldomore]');
   if (mb) mb.onclick = () => { saldoOpen = !saldoOpen; window.__hub.refresh(); };
+  const sstrip = el.querySelector('.hero-saldo');
+  el.querySelectorAll('[data-sscroll]').forEach((b) => (b.onclick = () => scrollStrip(sstrip, Number(b.dataset.sscroll))));
 }

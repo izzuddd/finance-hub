@@ -299,7 +299,7 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 }
 
 /* ==================== v3 — Beranda (home launcher) ==================== */
-.home-hero { background: linear-gradient(150deg, #16233f 0%, #101a30 52%, #141038 100%); border: 1px solid var(--glass-line); border-radius: 20px; padding: 18px 18px 16px; overflow: hidden; position: relative; }
+.home-hero { background: linear-gradient(150deg, #16233f 0%, #101a30 52%, #141038 100%); border: 1px solid var(--glass-line); border-radius: 20px; padding: 18px 18px 16px; overflow: hidden; position: relative; margin-bottom: 12px; }
 .home-hero::after { content: ''; position: absolute; inset: 0; background: radial-gradient(420px 220px at 118% -20%, rgba(77,141,255,.28), transparent 60%); pointer-events: none; }
 .hh-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .hh-greet { font-size: 14px; color: var(--ink-2); }
@@ -351,19 +351,15 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .acct-more { flex: 0 0 66px; min-height: 62px; border-radius: 13px; border: 1px dashed var(--glass-line); background: rgba(255,255,255,.05); color: var(--ink-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: var(--sans); font-size: 10.5px; cursor: pointer; scroll-snap-align: start; }
 .acct-more:hover { border-color: var(--brand); color: var(--ink); background: var(--brand-soft); }
 .acct-more .chev { font-size: 18px; line-height: 1; }
-/* Landscape: lay the hero out in two halves (totals left, account strip right) so it stays short and
-   the menu | ringkasan columns below get the vertical room to scroll up/down comfortably. */
-@media (min-width: 720px) {
-  .home-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 26px; row-gap: 4px; align-items: start; }
-  .home-hero > * { min-width: 0; } /* let grid items shrink so the account strip can scroll instead of overflowing */
-  .home-hero .hh-top, .home-hero .hh-label, .home-hero .hh-total, .home-hero .hh-sub { grid-column: 1; }
-  .home-hero .hh-label { margin-top: 12px; }
-  /* account strip: top cell of the right column (row 1), pinned up right under its label.
-     NB: never span a huge row range here — e.g. grid-row:1/99 would create ~98 empty tracks
-     whose row-gaps balloon the hero past the viewport and collapse the columns below it. */
-  .home-hero .hh-saldo { grid-column: 2; grid-row: 1; align-self: start; min-width: 0; }
-  .home-hero .hh-saldo .hh-saldo-lbl { margin-top: 2px; }
-}
+/* ‹ › scroll buttons for the account strip — shown only on desktop (pointer, no touch swipe) when expanded */
+.saldo-nav { display: none; gap: 4px; }
+.saldo-nav .sn-btn { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--glass-line); background: rgba(255,255,255,.05); color: var(--ink); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
+.saldo-nav .sn-btn:hover { background: var(--brand-soft); border-color: var(--brand); }
+@media (hover: hover) and (min-width: 720px) { .saldo-nav { display: inline-flex; } }
+/* Catat: two-column entry form so it fits a wide screen without scrolling down */
+.catat-2col { display: grid; grid-template-columns: 1fr; column-gap: 24px; }
+.catat-2col > .c2col { min-width: 0; }
+@media (min-width: 720px) { .catat-2col { grid-template-columns: 1fr 1fr; align-items: start; } .catat-card { max-width: 1100px; margin-left: auto; margin-right: auto; } }
 /* "Lihat semua akun" toggle + the collapsed extra cards */
 .see-all { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--glass-line); border-radius: 12px; background: rgba(255,255,255,.04); color: var(--ink-2); font-family: var(--sans); font-size: 13px; cursor: pointer; }
 .see-all:hover { border-color: var(--brand); color: var(--ink); background: var(--brand-soft); }

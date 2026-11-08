@@ -1,33 +1,19 @@
-// Catat: expense / income / transfer entry, history, real-time balances, cycle overview.
+// Catat: expense / income / transfer entry. Two-column form (fits without scrolling on wide screens).
+// Transaction history lives on the Transaksi page now — not duplicated here.
 import * as db from '../db.js';
 import * as M from '../model.js';
-import { esc, fmtIDR, fmtTL, fmtMoney, parseAmount, todayStr, cycleOf, currentCycle, cycleLabel, cyclePeriod, addMonths, uid, sum } from '../util.js';
-import { $, toast, openModal, tile, tiles, card, row, bar, seg, bindSeg, moneyCls, empty } from '../ui.js';
+import { esc, fmtIDR, fmtTL, fmtMoney, parseAmount, todayStr, cycleOf, cycleLabel, uid } from '../util.js';
+import { $, toast, openModal, row, seg, bindSeg } from '../ui.js';
 
-const st = { kind: 'expense', histCycle: null, histAcc: '', histAll: false, histSearch: '', draft: {} };
+const st = { kind: 'expense', draft: {} };
 
 export function render(el, S) {
-  const cur = currentCycle();
-  st.histCycle = st.histCycle || cur;
-  // only three entry types now; Ringkasan & Saldo live on Beranda
   const k = (st.kind === 'income' || st.kind === 'transfer') ? st.kind : 'expense';
   st.kind = k;
-  // wide screens (PC browser / phone in landscape): input left, history right, each its own scroll
-  document.body.dataset.catat = 'split';
-  el.innerHTML = `<div class="catat-wrap"><div class="pane pane-input">${form(k)}</div><div class="pane pane-hist">${history()}</div></div>`;
+  document.body.removeAttribute('data-catat'); // single card, its own 2-column grid — no fixed split pane
+  el.innerHTML = form(k);
   bindSeg(el, 'typeSeg', (v) => { saveDraft(); st.kind = v; render(el, S); });
   bindForm(el, S);
-  el.querySelectorAll('[data-tx]').forEach((n) => n.addEventListener('click', () => editTx(n.dataset.tx)));
-  el.querySelectorAll('[data-rate]').forEach((n) => n.addEventListener('click', () => editRate(n.dataset.rate, Number(n.dataset.rec) || 0)));
-  const hc = $('histCycle'), ha = $('histAcc'), hm = $('histMore'), hs = $('histSearch');
-  if (hc) hc.onchange = () => { st.histCycle = hc.value; render(el, S); };
-  if (ha) ha.onchange = () => { st.histAcc = ha.value; render(el, S); };
-  if (hm) hm.onclick = () => { st.histAll = !st.histAll; render(el, S); };
-  if (hs) hs.addEventListener('input', () => { // live search: only repaint the list, keep focus & form
-    st.histSearch = hs.value;
-    const ll = $('histList'); if (ll) ll.innerHTML = histListHTML();
-    const m = $('histMore'); if (m) m.style.display = normalize(st.histSearch) ? 'none' : '';
-  });
 }
 
 // ------------------------------------------------------------------ form
@@ -36,29 +22,35 @@ function form(k) {
   const d = st.draft;
   const from = d.from || (k === 'transfer' ? 'Mandiri' : 'AKBANK');
   const date = d.date || todayStr();
-  let h = '<div class="card">';
-  h += seg('typeSeg', [['expense', 'Keluar'], ['income', 'Masuk'], ['transfer', 'Transfer']], k);
-  h += rateCard(cycleOf(date));
-  h += `<label>Jumlah — bisa rumus, mis. 1155.88-240-150</label><input id="fAmount" class="amount-input" inputmode="decimal" autocomplete="off" value="${esc(d.amount || '')}" placeholder="0"><div class="hint" id="convHint"></div>`;
-  h += `<div class="flex2"><div><label>Tanggal</label><input id="fDate" type="date" value="${date}"><div class="note" id="cycleNote"></div></div>
+
+  // LEFT column: rate (TRY), amount, date, from-account
+  let left = rateCard(cycleOf(date));
+  left += `<label>Jumlah — bisa rumus, mis. 1155.88-240-150</label><input id="fAmount" class="amount-input" inputmode="decimal" autocomplete="off" value="${esc(d.amount || '')}" placeholder="0"><div class="hint" id="convHint"></div>`;
+  left += `<div class="flex2"><div><label>Tanggal</label><input id="fDate" type="date" value="${date}"><div class="note" id="cycleNote"></div></div>
         <div><label>${k === 'income' ? 'Masuk ke akun' : 'Dari akun'}</label><select id="fFrom">${accs.map((a) => `<option${a === from ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></div></div>`;
+
+  // RIGHT column: category (expense/income) or transfer fields, then description & note
+  let right = '';
   if (k !== 'transfer') {
     const def = d.category || (k === 'income' ? 'Income' : 'Needs - Food');
-    h += `<label>Kategori</label><div class="chips" id="catChips">${cats.filter((c) => (k === 'income' ? /Income|Loan|Saving|Transfer/.test(c) : c !== 'Income'))
+    right += `<label>Kategori</label><div class="chips" id="catChips">${cats.filter((c) => (k === 'income' ? /Income|Loan|Saving|Transfer/.test(c) : c !== 'Income'))
       .map((c) => `<button type="button" data-cat="${esc(c)}" class="${c === def ? 'active' : ''}">${M.categoryGroup(c) === 'Pulkam' ? '✈ ' + esc(c) + ' / trip' : esc(c.replace('Needs - ', '').replace('Wants - ', '♥ '))}</button>`).join('')}</div>
       <input type="hidden" id="fCategory" value="${esc(def)}"><div class="note" id="catHint">${catHint(def)}</div>`;
   } else {
     const to = d.to || 'AKBANK';
-    h += `<label>Ke akun</label><select id="fTo">${accs.map((a) => `<option${a === to ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
+    right += `<label>Ke akun</label><select id="fTo">${accs.map((a) => `<option${a === to ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
       <div class="flex2"><div><label>Biaya admin (IDR)</label><input id="fAdmin" inputmode="decimal" value="${esc(d.admin || '')}" placeholder="mis. 2500"></div>
       <div><label>TL diterima (top up)</label><input id="fTl" inputmode="decimal" value="${esc(d.tl || '')}" placeholder="mis. 5000"></div></div>
       <div class="flex2"><div><label>Flip biaya tetap</label><input id="fFlipFixed" inputmode="decimal" value="${db.setting('flip', {}).fixed ?? 68000}"></div>
       <div><label>Flip fee (%)</label><input id="fFlipPct" inputmode="decimal" value="${db.setting('flip', {}).pct ?? 1.5}"></div></div><div class="note" id="flipHint"></div>`;
   }
-  h += `<label>Keterangan</label><input id="fDesc" list="descList" value="${esc(d.desc || '')}" placeholder="mis. Migros"><datalist id="descList">${recentDescs(k).map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
-        <label>Catatan (opsional)</label><input id="fNote" value="${esc(d.note || '')}">
-        <button class="btn" id="btnSave">Simpan</button></div>`;
-  return h;
+  right += `<label>Keterangan</label><input id="fDesc" list="descList" value="${esc(d.desc || '')}" placeholder="mis. Migros"><datalist id="descList">${recentDescs(k).map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
+        <label>Catatan (opsional)</label><input id="fNote" value="${esc(d.note || '')}">`;
+
+  return `<div class="card catat-card">
+    ${seg('typeSeg', [['expense', 'Keluar'], ['income', 'Masuk'], ['transfer', 'Transfer']], k)}
+    <div class="catat-2col"><div class="c2col">${left}</div><div class="c2col">${right}</div></div>
+    <button class="btn" id="btnSave">Simpan</button></div>`;
 }
 function recentDescs(k) {
   const seen = new Set();
@@ -101,6 +93,7 @@ function bindForm(el, S) {
     $('fCategory').value = b.dataset.cat;
     $('catHint').innerHTML = catHint(b.dataset.cat);
   }));
+  el.querySelectorAll('[data-rate]').forEach((n) => n.addEventListener('click', () => editRate(n.dataset.rate, Number(n.dataset.rec) || 0)));
   upd();
   $('btnSave').onclick = () => save(el, S);
 }
@@ -141,43 +134,10 @@ function save(el, S) {
     toast('Tersimpan ✓ ' + fmtMoney(amt, M.isTRY(from) ? 'TRY' : 'IDR'));
   }
   st.draft = { from, date, category: $('fCategory')?.value, to: $('fTo')?.value };
-  st.histCycle = cycleOf(date);
   render(el, S);
 }
 
-// ------------------------------------------------------------------ history
-// smart search: case-insensitive, accent/space-insensitive, every keyword must appear somewhere
-function normalize(s) { return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim(); }
-function matchTx(t, tokens) {
-  const hay = normalize([t.desc, t.category, t.account, t.to, t.note, t.date, t.amount, Math.abs(t.amount), fmtIDR(Math.abs(M.txIDR(t))), t.link ? 'transfer' : ''].join(' '));
-  return tokens.every((tok) => hay.includes(tok));
-}
-function histListHTML() {
-  const q = normalize(st.histSearch), searching = !!q;
-  let list, total;
-  if (searching) { // search across ALL cycles
-    const tokens = q.split(' ');
-    list = M.txSorted(db.all('transactions')).filter((t) => (!st.histAcc || t.account === st.histAcc || t.to === st.histAcc) && matchTx(t, tokens));
-    total = list.length; list = list.slice(0, 100);
-  } else {
-    list = M.txSorted(M.txOfCycle(st.histCycle)).filter((t) => !st.histAcc || t.account === st.histAcc || t.to === st.histAcc);
-    total = list.length; if (!st.histAll) list = list.slice(0, 12);
-  }
-  const head = searching ? `<div class="note" style="margin:0 0 6px">Cari di semua riwayat — <b>${total}</b> cocok${total > 100 ? ' (100 teratas)' : ''}</div>` : '';
-  return head + (list.length ? list.map(txRow).join('') : empty(searching ? 'Tidak ada yang cocok' : 'Belum ada transaksi'));
-}
-function history() {
-  const cycles = M.cyclesWithData().slice().reverse();
-  if (!cycles.includes(st.histCycle)) cycles.unshift(st.histCycle);
-  const searching = !!normalize(st.histSearch);
-  return card('Riwayat', `<div class="hist-controls">
-      <input id="histSearch" type="search" inputmode="search" autocomplete="off" placeholder="🔍 Cari transaksi/transfer — mis. jago, migros, 150" value="${esc(st.histSearch || '')}">
-      <div class="flex3" style="margin-top:8px">
-      <select id="histCycle">${cycles.map((c) => `<option value="${c}"${c === st.histCycle ? ' selected' : ''}>${cycleLabel(c, true)}${c === currentCycle() ? ' (skr)' : ''}</option>`).join('')}</select>
-      <select id="histAcc"><option value="">Semua akun</option>${M.accountNames().map((a) => `<option${a === st.histAcc ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
-      <button class="btn small ghost" id="histMore"${searching ? ' style="display:none"' : ''}>${st.histAll ? 'Ringkas' : 'Semua'}</button></div></div>
-    <div id="histList">${histListHTML()}</div>`);
-}
+// ------------------------------------------------------------------ shared with the Transaksi page
 export function txRow(t) {
   const tl = M.isTRY(t.account);
   return row(esc(t.desc) + (t.link ? ' <span class="badge">transfer</span>' : ''),
@@ -201,4 +161,3 @@ export function editTx(id) {
     onSave: (v) => { M.saveTx({ ...t, ...v, amount: Number(v.amount) || 0, idr: v.idr === '' ? '' : Number(v.idr) }); toast('Diperbarui ✓'); },
     onDelete: () => { db.del('transactions', id); toast('Dihapus ✓'); } });
 }
-
