@@ -108,8 +108,9 @@ export function render(el) {
   const moreBtn = rest.length
     ? `<button class="acct-more" data-saldomore aria-label="${saldoOpen ? 'Ringkas' : 'Lihat semua akun'}"><span class="chev">${saldoOpen ? '‹' : '›'}</span><span>${saldoOpen ? 'Ringkas' : 'More (' + rest.length + ')'}</span></button>`
     : '';
-  const strip = `<div class="hh-saldo-lbl">SALDO REAL TIME</div>
-    <div class="hero-saldo">${shown.map((a) => acctCard(a, hide)).join('')}${moreBtn}</div>`;
+  const strip = `<div class="hh-saldo">
+    <div class="hh-saldo-lbl">SALDO REAL TIME</div>
+    <div class="hero-saldo">${shown.map((a) => acctCard(a, hide)).join('')}${moreBtn}</div></div>`;
 
   const hero = `<div class="hero home-hero">
     <div class="hh-top">

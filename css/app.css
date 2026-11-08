@@ -355,12 +355,12 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
    the menu | ringkasan columns below get the vertical room to scroll up/down comfortably. */
 @media (min-width: 720px) {
   .home-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 26px; row-gap: 4px; align-items: start; }
-  .home-hero .hh-top { grid-column: 1; grid-row: 1; }
-  .home-hero .hh-label { grid-column: 1; grid-row: 2; margin-top: 12px; }
-  .home-hero .hh-total { grid-column: 1; grid-row: 3; }
-  .home-hero .hh-sub { grid-column: 1; grid-row: 4; }
-  .home-hero .hh-saldo-lbl { grid-column: 2; grid-row: 1; margin-top: 2px; }
-  .home-hero .hero-saldo { grid-column: 2; grid-row: 2 / 6; align-self: start; }
+  .home-hero > * { min-width: 0; } /* let grid items shrink so the account strip can scroll instead of overflowing */
+  .home-hero .hh-top, .home-hero .hh-label, .home-hero .hh-total, .home-hero .hh-sub { grid-column: 1; }
+  .home-hero .hh-label { margin-top: 12px; }
+  /* account strip: one cell in the right column, pinned to the top (right under its label, no big gap) */
+  .home-hero .hh-saldo { grid-column: 2; grid-row: 1 / 99; align-self: start; min-width: 0; }
+  .home-hero .hh-saldo .hh-saldo-lbl { margin-top: 2px; }
 }
 /* "Lihat semua akun" toggle + the collapsed extra cards */
 .see-all { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--glass-line); border-radius: 12px; background: rgba(255,255,255,.04); color: var(--ink-2); font-family: var(--sans); font-size: 13px; cursor: pointer; }
