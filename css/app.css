@@ -358,8 +358,10 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
   .home-hero > * { min-width: 0; } /* let grid items shrink so the account strip can scroll instead of overflowing */
   .home-hero .hh-top, .home-hero .hh-label, .home-hero .hh-total, .home-hero .hh-sub { grid-column: 1; }
   .home-hero .hh-label { margin-top: 12px; }
-  /* account strip: one cell in the right column, pinned to the top (right under its label, no big gap) */
-  .home-hero .hh-saldo { grid-column: 2; grid-row: 1 / 99; align-self: start; min-width: 0; }
+  /* account strip: top cell of the right column (row 1), pinned up right under its label.
+     NB: never span a huge row range here — e.g. grid-row:1/99 would create ~98 empty tracks
+     whose row-gaps balloon the hero past the viewport and collapse the columns below it. */
+  .home-hero .hh-saldo { grid-column: 2; grid-row: 1; align-self: start; min-width: 0; }
   .home-hero .hh-saldo .hh-saldo-lbl { margin-top: 2px; }
 }
 /* "Lihat semua akun" toggle + the collapsed extra cards */
