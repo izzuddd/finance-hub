@@ -5,6 +5,7 @@ import { fmtIDR, fmtMoney, BULAN, currentCycle, cycleLabel, cyclePeriod, addMont
 import { card, bar, moneyCls, empty } from '../ui.js';
 
 let homeCyc = null; // selected period; defaults to the current cycle
+let saldoOpen = false; // Saldo Real Time: collapsed shows only the 3 main accounts + a "More" button
 
 const S = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const ICON = {
@@ -26,17 +27,20 @@ const FEATURES = [
 ];
 
 // Each bank's signature colour, ATM-card style. [background, text, muted-text]
+// every account a unique colour, each keeping its brand signature.
 const ACCT_THEME = {
-  'AKBANK': ['linear-gradient(135deg,#e4002b,#9a0020)', '#ffffff', 'rgba(255,255,255,.72)'],
-  'Mandiri': ['linear-gradient(135deg,#ffd14a,#e0a000)', '#2a2000', 'rgba(42,32,0,.6)'],
-  'Kartu Kredit Mandiri': ['linear-gradient(135deg,#ffcf3f,#d59300)', '#2a2000', 'rgba(42,32,0,.62)'],
-  'Bank Jago': ['linear-gradient(135deg,#ffd43b,#f1b000)', '#1a1400', 'rgba(26,20,0,.62)'],
-  'Bank Jago Saver': ['linear-gradient(135deg,#2c2c2c,#0e0e0e)', '#ffd43b', 'rgba(255,212,59,.7)'],
-  'DANA': ['linear-gradient(135deg,#2aa4f4,#1174d1)', '#ffffff', 'rgba(255,255,255,.78)'],
-  'Gopay': ['linear-gradient(135deg,#00c4b4,#0096c7)', '#ffffff', 'rgba(255,255,255,.82)'],
-  'Bibit': ['linear-gradient(135deg,#0f8a4e,#073a23)', '#eafff2', 'rgba(234,255,242,.72)'],
+  'AKBANK': ['linear-gradient(135deg,#e4002b,#9a0020)', '#ffffff', 'rgba(255,255,255,.72)'],            // merah
+  'Mandiri': ['linear-gradient(135deg,#9c7a00,#53400a)', '#fff8e0', 'rgba(255,248,224,.78)'],            // kuning gelap (emas tua)
+  'Kartu Kredit Mandiri': ['linear-gradient(135deg,#143a74,#0a1e3f)', '#ffd24a', 'rgba(255,210,74,.72)'], // biru dongker Mandiri + emas
+  'Bank Jago': ['linear-gradient(135deg,#ffd43b,#f1b000)', '#1a1400', 'rgba(26,20,0,.62)'],              // kuning terang
+  'Bank Jago Saver': ['linear-gradient(135deg,#2c2c2c,#0e0e0e)', '#ffd43b', 'rgba(255,212,59,.7)'],      // hitam + kuning
+  'DANA': ['linear-gradient(135deg,#2aa4f4,#1174d1)', '#ffffff', 'rgba(255,255,255,.78)'],               // biru terang
+  'Gopay': ['linear-gradient(135deg,#00c4b4,#0096c7)', '#ffffff', 'rgba(255,255,255,.82)'],              // tosca
+  'Bibit': ['linear-gradient(135deg,#0f8a4e,#073a23)', '#eafff2', 'rgba(234,255,242,.72)'],              // hijau
+  'Cash (TL)': ['linear-gradient(135deg,#6e6456,#3c3529)', '#f3eee4', 'rgba(243,238,228,.7)'],           // taupe/perunggu
+  'Cash (IDR)': ['linear-gradient(135deg,#46566f,#28324a)', '#eaf0fb', 'rgba(234,240,251,.7)'],          // slate biru
 };
-const DEFAULT_THEME = ['linear-gradient(135deg,#3a4663,#232c42)', '#eaf0fb', 'rgba(234,240,251,.6)'];
+const DEFAULT_THEME = ['linear-gradient(135deg,#5a4a63,#322842)', '#f1eaf8', 'rgba(241,234,248,.62)'];  // ungu abu (akun tak dikenal)
 const KIND = { bank: 'Bank', cash: 'Tunai', ewallet: 'E-Wallet', investment: 'Investasi', credit: 'Kartu Kredit' };
 
 function acctTheme(name) {
@@ -96,12 +100,16 @@ export function render(el) {
   const greet = h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 19 ? 'Selamat sore' : 'Selamat malam';
   const name = localStorage.getItem('hub.name') || 'Izud';
 
-  // Saldo Real Time lives in the hero now (highlighted strip under the period switcher):
-  // AKBANK / Mandiri / Bank Jago show first, the rest follow in the same horizontal swipe row.
+  // Saldo Real Time lives in the hero (highlighted strip under the period switcher). By default only
+  // AKBANK / Mandiri / Bank Jago show; "More" unfolds the rest to the right as a left/right scroll row.
   const prim = PRIMARY.map((n) => t.list.find((a) => a.name === n)).filter(Boolean);
-  const ordered = [...prim, ...t.list.filter((a) => !prim.includes(a))];
+  const rest = t.list.filter((a) => !prim.includes(a));
+  const shown = saldoOpen ? [...prim, ...rest] : prim;
+  const moreBtn = rest.length
+    ? `<button class="acct-more" data-saldomore aria-label="${saldoOpen ? 'Ringkas' : 'Lihat semua akun'}"><span class="chev">${saldoOpen ? '‹' : '›'}</span><span>${saldoOpen ? 'Ringkas' : 'More (' + rest.length + ')'}</span></button>`
+    : '';
   const strip = `<div class="hh-saldo-lbl">SALDO REAL TIME</div>
-    <div class="hero-saldo">${ordered.map((a) => acctCard(a, hide)).join('')}</div>`;
+    <div class="hero-saldo">${shown.map((a) => acctCard(a, hide)).join('')}${moreBtn}</div>`;
 
   const hero = `<div class="hero home-hero">
     <div class="hh-top">
@@ -128,4 +136,6 @@ export function render(el) {
   const eye = el.querySelector('[data-eye]');
   if (eye) eye.onclick = () => { localStorage.setItem('hub.hideBal', hide ? '0' : '1'); window.__hub.refresh(); };
   el.querySelectorAll('[data-cyc]').forEach((b) => (b.onclick = () => { homeCyc = addMonths(cyc, b.dataset.cyc === 'next' ? 1 : -1); window.__hub.refresh(); }));
+  const mb = el.querySelector('[data-saldomore]');
+  if (mb) mb.onclick = () => { saldoOpen = !saldoOpen; window.__hub.refresh(); };
 }

@@ -334,19 +334,34 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 /* Saldo Real Time — ATM-card tiles, one signature colour per bank */
 .acct-cards { display: grid; grid-template-columns: 1fr; gap: 10px; }
 @media (min-width: 520px) { .acct-cards { grid-template-columns: 1fr 1fr; } }
-.acct-card { position: relative; border-radius: 15px; padding: 12px 15px 12px; box-shadow: 0 6px 16px rgba(0,0,0,.38); overflow: hidden; min-height: 92px; }
-.acct-card::after { content: ''; position: absolute; right: -34px; top: -34px; width: 118px; height: 118px; border-radius: 50%; background: rgba(255,255,255,.1); }
-.ac-chip { width: 30px; height: 21px; border-radius: 5px; background: linear-gradient(135deg, rgba(255,255,255,.8), rgba(255,255,255,.3)); opacity: .6; margin-bottom: 8px; position: relative; z-index: 1; }
+.acct-card { position: relative; border-radius: 13px; padding: 9px 12px; box-shadow: 0 5px 14px rgba(0,0,0,.36); overflow: hidden; min-height: 62px; }
+.acct-card::after { content: ''; position: absolute; right: -28px; top: -28px; width: 92px; height: 92px; border-radius: 50%; background: rgba(255,255,255,.1); }
+.ac-chip { width: 23px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, rgba(255,255,255,.8), rgba(255,255,255,.3)); opacity: .6; margin-bottom: 5px; position: relative; z-index: 1; }
 .ac-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; position: relative; z-index: 1; }
-.ac-name { font-weight: 700; font-size: 14.5px; letter-spacing: .2px; }
-.ac-kind { font-size: 10px; font-family: var(--sans); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
-.ac-bal { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 7px; position: relative; z-index: 1; }
-.ac-sub { font-size: 11.5px; font-family: var(--sans); margin-top: 1px; position: relative; z-index: 1; }
+.ac-name { font-weight: 700; font-size: 12.5px; letter-spacing: .2px; }
+.ac-kind { font-size: 8.5px; font-family: var(--sans); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+.ac-bal { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; position: relative; z-index: 1; }
+.ac-sub { font-size: 10.5px; font-family: var(--sans); margin-top: 1px; position: relative; z-index: 1; }
 /* Saldo Real Time as a horizontal swipe strip inside the hero (AKBANK/Mandiri/Jago first, swipe for more) */
 .hh-saldo-lbl { font-size: 11px; letter-spacing: 1.4px; color: var(--ink-3); font-family: var(--sans); margin-top: 14px; }
-.hero-saldo { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x proximity; margin: 8px 0 2px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.hero-saldo { display: flex; gap: 9px; overflow-x: auto; scroll-snap-type: x proximity; margin: 7px 0 2px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .hero-saldo::-webkit-scrollbar { height: 0; }
-.hero-saldo .acct-card { flex: 0 0 200px; max-width: 80vw; scroll-snap-align: start; min-height: 84px; }
+.hero-saldo .acct-card { flex: 0 0 150px; max-width: 78vw; scroll-snap-align: start; }
+/* "More" / "Ringkas" toggle sits at the end of the strip and extends the row to the right */
+.acct-more { flex: 0 0 66px; min-height: 62px; border-radius: 13px; border: 1px dashed var(--glass-line); background: rgba(255,255,255,.05); color: var(--ink-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: var(--sans); font-size: 10.5px; cursor: pointer; scroll-snap-align: start; }
+.acct-more:hover { border-color: var(--brand); color: var(--ink); background: var(--brand-soft); }
+.acct-more .chev { font-size: 18px; line-height: 1; }
+/* Landscape: lay the hero out in two halves (totals left, account strip right) so it stays short and
+   the menu | ringkasan columns below get the vertical room to scroll up/down comfortably. */
+@media (min-width: 720px) {
+  .home-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 26px; row-gap: 4px; align-items: start; }
+  .home-hero .hh-top { grid-column: 1; grid-row: 1; }
+  .home-hero .hh-label { grid-column: 1; grid-row: 2; margin-top: 12px; }
+  .home-hero .hh-total { grid-column: 1; grid-row: 3; }
+  .home-hero .hh-sub { grid-column: 1; grid-row: 4; }
+  .home-hero .hh-saldo-lbl { grid-column: 2; grid-row: 1; margin-top: 2px; }
+  .home-hero .hero-saldo { grid-column: 2; grid-row: 2 / 6; align-self: start; }
+}
 /* "Lihat semua akun" toggle + the collapsed extra cards */
 .see-all { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--glass-line); border-radius: 12px; background: rgba(255,255,255,.04); color: var(--ink-2); font-family: var(--sans); font-size: 13px; cursor: pointer; }
 .see-all:hover { border-color: var(--brand); color: var(--ink); background: var(--brand-soft); }
