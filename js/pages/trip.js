@@ -121,7 +121,7 @@ function potentialView(evs) {
   }).join('');
   return collapsible('tPot', `<div class="nm">💡 Potensial trip<span class="amt">${pot.length} · sesuai kondisimu</span></div>`,
     body + `<div class="note">Feasibilitas pakai sisa gaji bebas (setelah budget, kamar & cicilan) — lihat Budget → Proyeksi cashflow. Dana ini juga dipakai Kos Palu, jadi ini panduan, bukan komitmen. Ketuk satu trip untuk isi/lihat rincian itemnya.</div>`,
-    st.open.tPot ?? true);
+    !!st.open.tPot); // collapsed by default — ketuk untuk buka
 }
 function planView(D) {
   const e = D.ev;
