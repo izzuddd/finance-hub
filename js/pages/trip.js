@@ -134,13 +134,18 @@ function planView(D) {
     tile('Sisa budget', `<span class="${moneyCls(sisa)}">${fmtIDR(sisa)}</span>`, '<div class="m">planned − real time</div>'),
   ], 'two') + tiles([tile('Planned budget', fmtIDR(D.planned), `<div class="m">${D.items.length} item${Number(e.budget) ? ' · pagu kantong ' + fmtShort(e.budget) : ''}</div><button class="edit-ico corner" data-evedit="${e.id}">✎</button>`)], 'one');
   h += categoryTotals(D);
-  let grp = '';
-  h += card('Item', D.items.map((it) => {
-    let g = '';
-    if (it.agenda && it.agenda !== grp) { grp = it.agenda; g = `<div class="grp">${esc(grp)}</div>`; }
-    return g + row(esc(it.item) + ` <span class="badge">${esc(it.category)}</span>`, [it.orderDate && 'dipesan ' + it.orderDate, it.note].filter(Boolean).map(esc).join(' · '),
-      fmtIDR(it.price) + `<div class="mvs"><button class="mv" data-mv="${it.id}" data-dir="-1" aria-label="naik">↑</button><button class="mv" data-mv="${it.id}" data-dir="1" aria-label="turun">↓</button><button class="edit-ico" data-item="${it.id}">✎</button></div>`);
-  }).join('') + '<button class="btn ghost fab-add" id="addItem">+ Item</button>');
+  const itemRow = (it) => row(esc(it.item) + ` <span class="badge">${esc(it.category)}</span>`, [it.orderDate && 'dipesan ' + it.orderDate, it.note].filter(Boolean).map(esc).join(' · '),
+    fmtIDR(it.price) + `<div class="mvs"><button class="mv" data-mv="${it.id}" data-dir="-1" aria-label="naik">↑</button><button class="mv" data-mv="${it.id}" data-dir="1" aria-label="turun">↓</button><button class="edit-ico" data-item="${it.id}">✎</button></div>`);
+  // contiguous groups by "Judul grup" (agenda): a non-empty title starts a group, blank items continue it
+  const groups = [];
+  D.items.forEach((it) => {
+    const last = groups[groups.length - 1];
+    if (it.agenda && (!last || last.key !== it.agenda)) groups.push({ key: it.agenda, items: [it] });
+    else if (!last) groups.push({ key: '', items: [it] });
+    else last.items.push(it);
+  });
+  const body = groups.map((g) => (g.key ? `<div class="grp gsum"><span>${esc(g.key)}</span><span class="st">${fmtIDR(sum(g.items, (x) => Number(x.price) || 0))}</span></div>` : '') + g.items.map(itemRow).join('')).join('');
+  h += card('Item', body + '<button class="btn ghost fab-add" id="addItem">+ Item</button>');
   return h;
 }
 // Spend per category (FOOD, TIKET, TRANSPORT, HOTEL, OLEH2, GIFT, OTHER): planned total, how much is already booked
@@ -331,7 +336,7 @@ function editItem(id, D) {
   const it = id ? db.get('event_items', id) : { id: uid('ei-'), event: st.ev, agenda: '', item: '', category: 'TRANSPORT', orderDate: '', price: 0, note: '' };
   openModal({ title: id ? it.item : 'Item baru', fields: [
     { k: 'item', label: 'Item', type: 'text', value: it.item },
-    { k: 'agenda', label: 'Judul grup (mis. Trip Bandung) — cukup di item pertama grup', type: 'text', value: it.agenda },
+    { k: 'agenda', label: 'Judul grup (mis. Trip Bandung) — cukup di item pertama grup', type: 'combo', value: it.agenda, options: [...new Set(D.items.map((x) => x.agenda).filter(Boolean))], placeholder: 'pilih grup atau ketik baru' },
     { k: 'category', label: 'Kategori', type: 'select', options: CATS, value: it.category },
     { k: 'price', label: 'Harga (IDR)', type: 'money', value: it.price || '' },
     { k: 'orderDate', label: 'Tanggal pesan (opsional)', type: 'date', value: it.orderDate },
