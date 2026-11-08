@@ -42,7 +42,7 @@ function bindTrip(el, S, D) {
   el.querySelectorAll('[data-calmonth]').forEach((b) => b.addEventListener('click', () => { st.calMonth = b.dataset.calmonth; st.calMode = 'month'; render(el, S); }));
   el.querySelectorAll('[data-calday]').forEach((b) => b.addEventListener('click', () => { st.calDay = b.dataset.calday; st.calMonth = st.calDay.slice(0, 7); st.calMode = 'day'; render(el, S); }));
   const on = (sel, fn) => el.querySelectorAll(sel).forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); fn(n.dataset); }));
-  on('[data-evedit]', () => editEvent(st.ev));
+  on('[data-evedit]', (d) => editEvent(d.evedit));
   on('[data-item]', (d) => editItem(d.item, D));
   on('[data-mv]', (d) => move('event_items', d.mv, Number(d.dir), D.items));
   on('[data-ag]', (d) => editAgenda(d.ag, D));
@@ -99,6 +99,7 @@ function picker(evs) {
   ].filter(([, list]) => list.length);
   const item = (e) => { const m = evMeta(e);
     return `<div class="evrow ${e.id === st.ev ? 'active' : ''}"><button class="evsel" data-ev="${e.id}"><span class="t">${esc(e.name)} ${m.badges}</span><span class="m">${esc(m.range)}${m.when ? ' · <b>' + m.when + '</b>' : ''}${Number(e.budget) ? ' · ' + fmtIDR(e.budget) : ''}</span></button>
+      <button class="evdel evedit" data-evedit="${e.id}" aria-label="Edit ${esc(e.name)}" title="Edit judul & detail">✎</button>
       <button class="evdel" data-evdel="${e.id}" aria-label="Hapus ${esc(e.name)}" title="Hapus">🗑</button></div>`; };
   const m = cur ? evMeta(cur) : null;
   return `<div class="evpick ${st.pick || !cur ? 'open' : ''}">
@@ -131,7 +132,7 @@ function planView(D) {
   let h = tiles([
     tile('Real time expense', fmtIDR(realtime), `<div class="m">log jajan ${fmtShort(D.spent)} + sudah dipesan ${fmtShort(paidItems)}</div>`),
     tile('Sisa budget', `<span class="${moneyCls(sisa)}">${fmtIDR(sisa)}</span>`, '<div class="m">planned − real time</div>'),
-  ], 'two') + tiles([tile('Planned budget', fmtIDR(D.planned), `<div class="m">${D.items.length} item${Number(e.budget) ? ' · pagu kantong ' + fmtShort(e.budget) : ''}</div><button class="edit-ico corner" data-evedit="1">✎</button>`)], 'one');
+  ], 'two') + tiles([tile('Planned budget', fmtIDR(D.planned), `<div class="m">${D.items.length} item${Number(e.budget) ? ' · pagu kantong ' + fmtShort(e.budget) : ''}</div><button class="edit-ico corner" data-evedit="${e.id}">✎</button>`)], 'one');
   h += categoryTotals(D);
   let grp = '';
   h += card('Item', D.items.map((it) => {

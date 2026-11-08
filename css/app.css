@@ -84,6 +84,7 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .evsel { flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 8px 10px; cursor: pointer; color: var(--ink); font: inherit; }
 .evdel { flex: 0 0 auto; width: 40px; height: 40px; border: 0; background: none; border-radius: 10px; cursor: pointer; font-size: 16px; opacity: .55; }
 .evdel:hover, .evdel:focus-visible { opacity: 1; background: var(--bad-soft, rgba(214,69,69,.12)); }
+.evedit { font-size: 15px; } .evedit:hover, .evedit:focus-visible { background: var(--brand-soft); } /* edit = brand, not delete-red */
 .subh { margin: 14px 0 6px; font-size: 13px; color: var(--ink-2); }
 .evlist .btn { margin: 8px 4px 0; }
 /* "+ …" add buttons float above the bottom nav while their list is on screen */
