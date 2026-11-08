@@ -239,7 +239,8 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
   /* modal becomes a centred dialog instead of a bottom sheet */
   #overlay { align-items: center; }
   #modal { max-width: 620px; border-radius: 18px; max-height: 88vh; }
-  .btn.fab-add { position: static; margin-left: auto; box-shadow: var(--shadow); }
+  /* add-record buttons keep floating while a list scrolls — pinned to the pane bottom, not buried at the end */
+  .btn.fab-add { position: sticky; bottom: 6px; margin: 10px 0 2px auto; width: auto; z-index: 6; box-shadow: 0 8px 20px rgba(0,0,0,.28); }
 
   /* --- independent-scroll split: left + right columns each scroll on their own --- */
   /* Catat form builds its own .catat-wrap; every other view gets .wide-top + .wide-cols from app.js */
