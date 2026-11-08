@@ -1,26 +1,37 @@
+/* ---- LaTeX-style display font (Computer Modern). Loads online; local installs or serif fall back cleanly offline. ---- */
+@font-face { font-family: 'CM Serif'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font/fonts/Serif/cmunrm.woff') format('woff'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'CM Serif'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font/fonts/Serif/cmunbx.woff') format('woff'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'CM Serif'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font/fonts/Serif/cmunti.woff') format('woff'); font-weight: 400; font-style: italic; font-display: swap; }
+
+/* ==================== v3 — black / navy / blue, dark-only theme ==================== */
 :root {
-  --bg: #f4f6fa; --card: #ffffff; --ink: #1a2233; --ink-2: #5b6478; --ink-3: #8e97aa;
-  --line: #e6e9f0; --field: #fbfcfe; --brand: #2f6fed; --brand-soft: #e8effd;
-  --good: #189a5c; --good-soft: #e2f6ec; --bad: #d64545; --bad-soft: #fdeaea; --warn: #b57a0c; --warn-soft: #fdf3dd;
-  --radius: 14px; --shadow: 0 1px 3px rgba(20, 30, 60, .07);
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1420; --card: #171e2d; --ink: #e8ecf4; --ink-2: #aab3c5; --ink-3: #7c869b;
-    --line: #273047; --field: #121827; --brand: #6d9bff; --brand-soft: #1e2b4a;
-    --good: #43c486; --good-soft: #143325; --bad: #ff7b7b; --bad-soft: #3a1c22; --warn: #e2b04a; --warn-soft: #3a2f16;
-    --shadow: none; color-scheme: dark;
-  }
+  --bg: #080d1a; --bg-2: #0b1222; --ink: #eaf0fb; --ink-2: #a7b2cc; --ink-3: #6f7c99;
+  --card: #121a2e; --card-2: #0f1728; --line: #233049; --field: #0e1627;
+  --brand: #4d8dff; --brand-2: #2f6fed; --brand-soft: #17254a;
+  --good: #3ecf8e; --good-soft: #0f2d23; --bad: #ff6b6b; --bad-soft: #3a1722; --warn: #e2b04a; --warn-soft: #3a2f16;
+  --glass: rgba(16, 24, 44, .68); --glass-line: rgba(255, 255, 255, .09);
+  --serif: 'Latin Modern Roman', 'CMU Serif', 'CM Serif', Georgia, 'Times New Roman', serif;
+  --sans: -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --radius: 16px; --shadow: 0 2px 10px rgba(0, 0, 0, .35);
+  color-scheme: dark;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; }
-body { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+html, body { margin: 0; color: var(--ink); font: 15.5px/1.5 var(--serif); }
+body {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(1100px 620px at 108% -8%, #16305e 0%, rgba(22,48,94,0) 55%),
+    radial-gradient(900px 520px at -12% 4%, #1c1550 0%, rgba(28,21,80,0) 52%),
+    var(--bg);
+  background-attachment: fixed;
+}
+/* data entry & dense numeric tables stay in a crisp sans; everything else wears the LaTeX serif */
+input, select, textarea, .amount-input, .mathbar button, .tbl, .seg button, nav button, .badge, code { font-family: var(--sans); }
 button { font: inherit; color: inherit; }
 a { color: var(--brand); }
 
-header { position: sticky; top: 0; z-index: 20; background: var(--bg); padding: calc(10px + env(safe-area-inset-top)) 16px 8px; display: flex; align-items: center; justify-content: space-between; max-width: 680px; margin: 0 auto; }
-header h1 { font-size: 20px; margin: 0; letter-spacing: -.2px; }
+header { position: sticky; top: 0; z-index: 20; background: rgba(8, 13, 26, .55); backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%); padding: calc(10px + env(safe-area-inset-top)) 16px 10px; display: flex; align-items: center; justify-content: space-between; max-width: 680px; margin: 0 auto; }
+header h1 { font-size: 22px; margin: 0; letter-spacing: .2px; font-weight: 700; }
 .hdr-r { display: flex; align-items: center; gap: 10px; }
 #syncBar { display: none; max-width: 680px; margin: 0 auto 6px; padding: 7px 16px; font-size: 12.5px; line-height: 1.35; cursor: pointer; }
 #syncBar.show { display: block; } #syncBar.syncing { color: var(--brand); } #syncBar.error { color: var(--bad); } #syncBar.auth { color: var(--warn); }
@@ -34,16 +45,29 @@ header .ver { font-size: 10.5px; color: var(--ink-3); opacity: .7; font-variant-
 @keyframes pulse { 50% { opacity: .35; } }
 
 main { padding: 0 14px; max-width: 680px; margin: 0 auto; }
-.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 12px; }
-.card.focus { outline: 2px solid var(--brand-soft); }
-.card h3 { margin: 0 0 10px; font-size: 12.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.card { background: linear-gradient(180deg, var(--card), var(--card-2)); border: 1px solid var(--glass-line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 12px; }
+.card.focus { outline: 2px solid var(--brand); }
+.card h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-3); font-family: var(--sans); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .card h4 { margin: 14px 0 6px; font-size: 13px; color: var(--ink-2); }
 
-nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: var(--card); border-top: 1px solid var(--line); display: flex; padding-bottom: env(safe-area-inset-bottom); }
-nav button { flex: 1; background: none; border: 0; padding: 7px 0 6px; font-size: 10.5px; color: var(--ink-3); cursor: pointer; }
-nav button .ico { display: block; font-size: 19px; margin-bottom: 1px; }
-nav button .ico.plus { width: 34px; height: 34px; margin: -6px auto 2px; line-height: 34px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 22px; font-weight: 700; }
-nav button.active { color: var(--brand); font-weight: 600; }
+/* floating glass "island": centred pill that doesn't seal off the whole bottom edge */
+nav { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom)); width: max-content; max-width: calc(100% - 24px);
+  display: flex; align-items: center; gap: 2px; padding: 7px 9px;
+  background: var(--glass); backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--glass-line); border-radius: 999px; box-shadow: 0 12px 34px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .06); }
+nav button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: none; border: 0; padding: 8px 14px; min-width: 56px; font-size: 10px; font-weight: 600; letter-spacing: .2px;
+  color: var(--ink-3); cursor: pointer; border-radius: 999px; transition: color .15s, background .15s; }
+nav button .ico { display: flex; align-items: center; justify-content: center; height: 22px; }
+nav button .ico svg { width: 21px; height: 21px; }
+nav button.active { color: var(--brand); background: var(--brand-soft); }
+nav button.center { padding: 0; min-width: 0; }
+nav button.center .ico { width: 52px; height: 52px; margin: -16px 2px 0; border-radius: 50%;
+  background: linear-gradient(145deg, var(--brand), var(--brand-2)); color: #fff;
+  box-shadow: 0 8px 20px rgba(77, 141, 255, .5), inset 0 1px 0 rgba(255, 255, 255, .35); }
+nav button.center .ico svg { width: 26px; height: 26px; }
+nav button.center.active { background: none; color: var(--brand); }
 
 label { display: block; font-size: 12px; color: var(--ink-2); margin: 12px 0 4px; }
 input, select, textarea { width: 100%; padding: 11px 12px; font: inherit; border: 1px solid var(--line); border-radius: 10px; background: var(--field); color: var(--ink); }
@@ -88,8 +112,8 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .subh { margin: 14px 0 6px; font-size: 13px; color: var(--ink-2); }
 .evlist .btn { margin: 8px 4px 0; }
 /* "+ …" add buttons float above the bottom nav while their list is on screen */
-.btn.fab-add { position: sticky; bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 6; width: auto; margin: 14px 0 4px auto; padding: 10px 18px;
-  border-radius: 999px; background: var(--brand); color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.22); font-size: 14px; }
+.btn.fab-add { position: sticky; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 6; width: auto; margin: 14px 0 4px auto; padding: 10px 18px;
+  border-radius: 999px; background: linear-gradient(145deg, var(--brand), var(--brand-2)); color: #fff; box-shadow: 0 8px 22px rgba(77,141,255,.4); font-size: 14px; }
 /* calendar */
 .cal-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 8px; }
 .cal-bar .chips { padding: 0; }
@@ -219,7 +243,7 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 @media (max-width: 420px) { .tbl { font-size: 11px; } .tbl .th { font-size: 9.5px; } .tbl .th, .tbl .tr { gap: 3px; grid-template-columns: 38px repeat(6, 1fr); } } .tbl span:first-child { text-align: left; }
 .tbl .tr { cursor: pointer; } .tbl .tr:hover { background: var(--brand-soft); }
 
-#toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); background: #1a2233; color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 13.5px; opacity: 0; transition: .2s; z-index: 60; max-width: 90vw; pointer-events: none; }
+#toast { position: fixed; left: 50%; bottom: calc(108px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); background: #1b2440; border: 1px solid var(--glass-line); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 13.5px; opacity: 0; transition: .2s; z-index: 60; max-width: 90vw; pointer-events: none; }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #overlay { position: fixed; inset: 0; background: rgba(10, 16, 30, .45); z-index: 50; display: none; align-items: flex-end; justify-content: center; }
 #overlay.show { display: flex; }
@@ -236,9 +260,7 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 @media (min-width: 720px) {
   header, #syncBar { max-width: 1180px; }
   main { max-width: 1180px; }
-  /* bottom nav: keep a full-width bar but don't over-stretch the buttons */
-  nav { justify-content: center; }
-  nav button { flex: 0 1 150px; }
+  /* floating island nav stays centred & pill-shaped on wide screens too — no overrides needed */
   /* modal becomes a centred dialog instead of a bottom sheet */
   #overlay { align-items: center; }
   #modal { max-width: 620px; border-radius: 18px; max-height: 88vh; }
@@ -267,5 +289,36 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
   .pane::-webkit-scrollbar-track { background: transparent; }
   .catat-wrap .pane-hist .hist-controls { position: sticky; top: 0; background: var(--card); z-index: 3; padding: 2px 0 6px; }
 }
+
+/* ==================== v3 — Beranda (home launcher) ==================== */
+.home-hero { background: linear-gradient(150deg, #16233f 0%, #101a30 52%, #141038 100%); border: 1px solid var(--glass-line); border-radius: 20px; padding: 18px 18px 16px; overflow: hidden; position: relative; }
+.home-hero::after { content: ''; position: absolute; inset: 0; background: radial-gradient(420px 220px at 118% -20%, rgba(77,141,255,.28), transparent 60%); pointer-events: none; }
+.hh-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.hh-greet { font-size: 14px; color: var(--ink-2); }
+.hh-name { font-size: 26px; font-weight: 700; line-height: 1.1; margin: 1px 0 2px; letter-spacing: .2px; }
+.hh-month { font-size: 12.5px; color: var(--ink-3); }
+.hh-eye { background: rgba(255,255,255,.08); border: 1px solid var(--glass-line); color: var(--ink-2); width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.hh-eye svg { width: 20px; height: 20px; }
+.hh-label { font-size: 11px; letter-spacing: 1.4px; color: var(--ink-3); font-family: var(--sans); margin-top: 16px; }
+.hh-total { font-size: 34px; font-weight: 700; letter-spacing: .5px; font-variant-numeric: tabular-nums; margin: 2px 0 14px; }
+.hh-sub { display: flex; gap: 10px; }
+.hh-chip { flex: 1; min-width: 0; background: rgba(255,255,255,.05); border: 1px solid var(--glass-line); border-radius: 13px; padding: 9px 12px; }
+.hh-chip span { display: block; font-size: 11.5px; color: var(--ink-3); font-family: var(--sans); }
+.hh-chip b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.hh-chip.up b { color: var(--good); } .hh-chip.down b { color: var(--bad); }
+
+.hf-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.hf { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 14px 4px 11px; border: 1px solid var(--glass-line); border-radius: 15px;
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015)); color: var(--ink); cursor: pointer; transition: transform .12s, border-color .15s, background .15s; }
+.hf:hover { transform: translateY(-2px); border-color: var(--brand); background: var(--brand-soft); }
+.hf:active { transform: translateY(0); }
+.hf-ic { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 13px; background: rgba(77,141,255,.14); color: var(--brand); }
+.hf-ic svg { width: 23px; height: 23px; }
+.hf-l { font-size: 11.5px; font-weight: 600; text-align: center; line-height: 1.15; }
+@media (max-width: 380px) { .hf-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 720px) { .hf-grid { grid-template-columns: repeat(4, 1fr); } }
+.jatah-card { display: flex; align-items: center; gap: 12px; }
+.jatah-card .jc-l { flex: 1; min-width: 0; }
+.jatah-card .jc-big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

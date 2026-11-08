@@ -5,6 +5,7 @@ import * as sync from './sync.js';
 import { setCycleStartDay, cycleLabel, currentCycle, fmtIDR } from './util.js';
 import { $, toast, closeModal, initMathBar } from './ui.js';
 import { CONFIG } from './config.js';
+import * as home from './pages/home.js';
 import * as add from './pages/add.js';
 import * as budget from './pages/budget.js';
 import * as saving from './pages/saving.js';
@@ -15,6 +16,7 @@ import * as trip from './pages/trip.js';
 import * as kredit from './pages/kredit.js';
 
 const PAGES = {
+  home: { title: 'Finance Hub', mod: home },
   insight: { title: 'Insight', mod: insight },
   saving: { title: 'Tabungan', mod: saving },
   kredit: { title: 'Kredit', mod: kredit },
@@ -95,6 +97,7 @@ async function boot() {
   await db.load();
   setCycleStartDay(db.setting('cycleStartDay', 15));
   initMathBar();
+  window.__hub = { nav: show, refresh: paint }; // Beranda tiles & toggles navigate / re-render through this bridge
   $('verLabel').textContent = 'v' + CONFIG.APP_VERSION;
   $('verLabel').onclick = () => show('settings');
   document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.page)));
@@ -141,7 +144,7 @@ async function boot() {
     setCycleStartDay(db.setting('cycleStartDay', 15));
   }
   const first = !db.all('transactions').length && !db.all('accounts').length;
-  show(first ? 'settings' : (localStorage.getItem('hub.page') || 'add'));
+  show(first ? 'settings' : (localStorage.getItem('hub.page') || 'home'));
   if (first) toast('Selamat datang! Impor data lama atau hubungkan Google Sheets di sini.', 5000);
   // back from a Google login by redirect (home-screen app): finish what the user started
   const back = sync.handleRedirect();
