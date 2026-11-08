@@ -30,8 +30,10 @@ body {
 }
 /* data entry & dense numeric tables stay in a crisp sans; everything else wears the LaTeX serif */
 input, select, textarea, .amount-input, .mathbar button, .tbl, .seg button, nav button, .badge, code { font-family: var(--sans); }
-/* money figures use the math serif so digits are lining & tabular (all the same height, no hanging 3/4/5/7/9) */
-.hh-total, .hh-chip b, .ac-bal, .ac-sub, .rk-sisa b, .hero .big, .tile .v,
+/* every money/value figure across the app uses the math serif so digits are lining & tabular
+   (all the same height, no hanging 3/4/5/7/9). Dense sans tables/inputs already have even digits. */
+.hh-total, .hh-chip b, .ac-bal, .ac-sub, .rk-sisa b, .hero .big, .tile .v, .hint, .amount-input,
+.tx .r, .grp .st, .coll-hd .amt, .chk .r, .pl .pv, header .rate, header .ver,
 .comp .row1 span, .comp .row2 span, .comp .s span { font-family: var(--num); font-variant-numeric: lining-nums tabular-nums; }
 button { font: inherit; color: inherit; }
 a { color: var(--brand); }
@@ -340,6 +342,11 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .ac-kind { font-size: 10px; font-family: var(--sans); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
 .ac-bal { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 7px; position: relative; z-index: 1; }
 .ac-sub { font-size: 11.5px; font-family: var(--sans); margin-top: 1px; position: relative; z-index: 1; }
+/* Saldo Real Time as a horizontal swipe strip inside the hero (AKBANK/Mandiri/Jago first, swipe for more) */
+.hh-saldo-lbl { font-size: 11px; letter-spacing: 1.4px; color: var(--ink-3); font-family: var(--sans); margin-top: 14px; }
+.hero-saldo { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x proximity; margin: 8px 0 2px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.hero-saldo::-webkit-scrollbar { height: 0; }
+.hero-saldo .acct-card { flex: 0 0 200px; max-width: 80vw; scroll-snap-align: start; min-height: 84px; }
 /* "Lihat semua akun" toggle + the collapsed extra cards */
 .see-all { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--glass-line); border-radius: 12px; background: rgba(255,255,255,.04); color: var(--ink-2); font-family: var(--sans); font-size: 13px; cursor: pointer; }
 .see-all:hover { border-color: var(--brand); color: var(--ink); background: var(--brand-soft); }

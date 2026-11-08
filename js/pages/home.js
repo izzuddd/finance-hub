@@ -96,6 +96,13 @@ export function render(el) {
   const greet = h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 19 ? 'Selamat sore' : 'Selamat malam';
   const name = localStorage.getItem('hub.name') || 'Izud';
 
+  // Saldo Real Time lives in the hero now (highlighted strip under the period switcher):
+  // AKBANK / Mandiri / Bank Jago show first, the rest follow in the same horizontal swipe row.
+  const prim = PRIMARY.map((n) => t.list.find((a) => a.name === n)).filter(Boolean);
+  const ordered = [...prim, ...t.list.filter((a) => !prim.includes(a))];
+  const strip = `<div class="hh-saldo-lbl">SALDO REAL TIME</div>
+    <div class="hero-saldo">${ordered.map((a) => acctCard(a, hide)).join('')}</div>`;
+
   const hero = `<div class="hero home-hero">
     <div class="hh-top">
       <div><div class="hh-greet">${greet},</div><div class="hh-name">${esc(name)}!</div>
@@ -103,6 +110,7 @@ export function render(el) {
       </div>
       <button class="hh-eye" data-eye aria-label="Sembunyikan / tampilkan saldo">${hide ? ICON.eyeOff : ICON.eye}</button>
     </div>
+    ${strip}
     <div class="hh-label">TOTAL SALDO</div>
     <div class="hh-total">${money(net)}</div>
     <div class="hh-sub">
@@ -113,28 +121,11 @@ export function render(el) {
   const grid = card('', `<div class="hf-grid">${FEATURES.map(([pg, label, ic]) =>
     `<button class="hf" data-nav="${pg}"><span class="hf-ic">${ICON[ic]}</span><span class="hf-l">${esc(label)}</span></button>`).join('')}</div>`);
 
-  // Saldo Real Time: only the main accounts show at once; the rest unfold under "Lihat semua akun".
-  const prim = PRIMARY.map((n) => t.list.find((a) => a.name === n)).filter(Boolean);
-  const extra = t.list.filter((a) => !prim.includes(a));
-  const saldoBody = `<div class="acct-cards">${prim.map((a) => acctCard(a, hide)).join('')}</div>`
-    + (extra.length ? `<button class="see-all" data-seeall><span class="lbl">Lihat semua akun (${extra.length})</span><span class="chev">⌄</span></button>
-      <div class="acct-extra" hidden><div class="acct-cards">${extra.map((a) => acctCard(a, hide)).join('')}</div></div>` : '')
-    + `<div class="note">Saldo awal siklus diatur di Budget → Siklus; kalau kosong dipakai saldo akhir siklus lalu.</div>`;
-  const saldo = card('Saldo Real Time', saldoBody);
-
-  // Landscape split: left column = menu + saldo, right column = ringkasan (hero spans the top band).
-  el.innerHTML = hero + pin(grid, 'l') + pin(saldo, 'l') + pin(ringkasan(cyc), 'r');
+  // Landscape split: left column = menu, right column = ringkasan (hero + its saldo strip span the top).
+  el.innerHTML = hero + pin(grid, 'l') + pin(ringkasan(cyc), 'r');
 
   el.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => nav(b.dataset.nav)));
   const eye = el.querySelector('[data-eye]');
   if (eye) eye.onclick = () => { localStorage.setItem('hub.hideBal', hide ? '0' : '1'); window.__hub.refresh(); };
   el.querySelectorAll('[data-cyc]').forEach((b) => (b.onclick = () => { homeCyc = addMonths(cyc, b.dataset.cyc === 'next' ? 1 : -1); window.__hub.refresh(); }));
-  const sa = el.querySelector('[data-seeall]');
-  if (sa) sa.onclick = () => {
-    const box = el.querySelector('.acct-extra');
-    const open = box.hasAttribute('hidden');
-    box.toggleAttribute('hidden', !open);
-    sa.classList.toggle('open', open);
-    sa.querySelector('.lbl').textContent = open ? 'Sembunyikan' : `Lihat semua akun (${extra.length})`;
-  };
 }
