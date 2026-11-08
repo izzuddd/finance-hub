@@ -360,6 +360,10 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
 .catat-2col { display: grid; grid-template-columns: 1fr; column-gap: 24px; }
 .catat-2col > .c2col { min-width: 0; }
 @media (min-width: 720px) { .catat-2col { grid-template-columns: 1fr 1fr; align-items: start; } .catat-card { max-width: 1100px; margin-left: auto; margin-right: auto; } }
+/* small Keluar/Masuk direction switch (replaces the old full-width type tab) */
+.dir-seg { margin: 8px 0 2px; }
+.dir-seg button[data-dir="out"].active { color: var(--bad); }
+.dir-seg button[data-dir="in"].active { color: var(--good); }
 /* "Lihat semua akun" toggle + the collapsed extra cards */
 .see-all { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--glass-line); border-radius: 12px; background: rgba(255,255,255,.04); color: var(--ink-2); font-family: var(--sans); font-size: 13px; cursor: pointer; }
 .see-all:hover { border-color: var(--brand); color: var(--ink); background: var(--brand-soft); }
