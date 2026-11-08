@@ -28,6 +28,10 @@ export function openModal({ title, sub, fields, onSave, onDelete, saveLabel = 'S
       input = `<select id="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(f.value ?? '') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     } else if (f.type === 'textarea') {
       input = `<textarea id="${id}" rows="3">${esc(f.value ?? '')}</textarea>`;
+    } else if (f.type === 'combo') {
+      // pick from an existing list OR type a new value (native datalist dropdown)
+      const opts = (f.options || []).map((o) => (Array.isArray(o) ? o[0] : o));
+      input = `<input id="${id}" list="${id}_dl" value="${esc(f.value ?? '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off"><datalist id="${id}_dl">${opts.map((o) => `<option value="${esc(o)}"></option>`).join('')}</datalist>`;
     } else {
       const type = f.type === 'date' ? 'date' : f.type === 'month' ? 'month' : 'text';
       const mode = f.type === 'money' || f.type === 'number' ? ' inputmode="decimal"' : '';
@@ -123,8 +127,8 @@ export function seg(id, items, active) {
 export function bindSeg(root, id, fn) {
   root.querySelectorAll(`#${id} button`).forEach((b) => b.addEventListener('click', () => fn(b.dataset.k)));
 }
-export function collapsible(id, head, body, open) {
-  return `<div class="coll${open ? ' open' : ''}" data-coll="${id}"><div class="coll-hd" data-toggle="${id}">${head}<span class="chev">›</span></div><div class="coll-bd">${body}</div></div>`;
+export function collapsible(id, head, body, open, attrs = '') {
+  return `<div class="coll${open ? ' open' : ''}" data-coll="${id}"${attrs ? ' ' + attrs : ''}><div class="coll-hd" data-toggle="${id}">${head}<span class="chev">›</span></div><div class="coll-bd">${body}</div></div>`;
 }
 
 export const PALETTE = ['#2f6fed', '#189a5c', '#d64545', '#c98a12', '#7c5cff', '#12a0b5', '#e0699b', '#8a94a6', '#e8873b'];

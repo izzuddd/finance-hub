@@ -255,6 +255,8 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--brand); pa
   .catat-wrap, .wide-cols { display: grid; gap: 16px; flex: 1 1 auto; min-height: 0; }
   .catat-wrap { grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.1fr); }
   .wide-cols { grid-template-columns: 1fr 1fr; }
+  .trip-split { grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.4fr); } /* Trip: picker left (narrow), tabs+content right */
+  .trip-split .pane-right > .seg { position: sticky; top: 0; z-index: 3; } /* keep the Rencana/Timeline/… tabs in view while scrolling */
   .catat-wrap > .pane, .wide-cols > .pane { overflow-y: auto; min-height: 0; padding: 2px 10px 28px 2px; }
   .catat-wrap > .pane > .card { margin-bottom: 12px; }
   .pane::-webkit-scrollbar { width: 9px; }

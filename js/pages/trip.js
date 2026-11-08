@@ -15,21 +15,26 @@ const CATS = [['TIKET', 'TIKET — pesawat/kereta pulang-pergi'], ['TRANSPORT', 
 export function render(el, S) {
   const evs = M.events();
   st.ev = st.ev && db.get('events', st.ev) ? st.ev : defaultEvent(evs)?.id;
-  let h = `<button class="btn small newev" id="newEv">+ Trip / acara baru</button>` + picker(evs) + potentialView(evs);
-  if (!st.ev) { el.innerHTML = h + empty('Belum ada trip / acara'); $('newEv').onclick = () => editEvent(null); return; }
+  // left column: new-trip button + trip picker (dropdown) + potential trips
+  const leftH = `<button class="btn small newev" id="newEv">+ Trip / acara baru</button>` + picker(evs) + potentialView(evs);
+  if (!st.ev) { el.innerHTML = leftH + empty('Belum ada trip / acara'); bindTrip(el, S, null); return; }
   const D = M.eventData(st.ev);
   const isTrip = D.ev.kind === 'trip';
-  h += seg('tSeg', isTrip ? [['plan', 'Rencana'], ['agenda', 'Timeline'], ['gear', 'Perlengkapan Trip'], ['jajan', 'Log Jajan']] : [['plan', 'Daftar']], isTrip ? st.sub : 'plan');
+  // right column: the selected trip's tabs + their content
+  let rightH = seg('tSeg', isTrip ? [['plan', 'Rencana'], ['agenda', 'Timeline'], ['gear', 'Perlengkapan Trip'], ['jajan', 'Log Jajan']] : [['plan', 'Daftar']], isTrip ? st.sub : 'plan');
   const sub = isTrip ? st.sub : 'plan';
-  if (sub === 'plan') h += planView(D);
-  if (sub === 'agenda') h += calendarView(D) + agendaView(D);
-  if (sub === 'gear') h += gearView(D);
-  if (sub === 'jajan') h += jajanView(D);
-  el.innerHTML = h;
+  if (sub === 'plan') rightH += planView(D);
+  if (sub === 'agenda') rightH += calendarView(D) + agendaView(D);
+  if (sub === 'gear') rightH += gearView(D);
+  if (sub === 'jajan') rightH += jajanView(D);
+  el.innerHTML = `<div class="wide-cols trip-split"><div class="pane pane-left">${leftH}</div><div class="pane pane-right">${rightH}</div></div>`;
+  bindTrip(el, S, D);
+}
+function bindTrip(el, S, D) {
+  const nv = $('newEv'); if (nv) nv.onclick = () => editEvent(null);
   el.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => { st.ev = b.dataset.ev; st.pick = false; render(el, S); }));
-  $('evToggle').onclick = () => { st.pick = !st.pick; render(el, S); };
+  const et = $('evToggle'); if (et) et.onclick = () => { st.pick = !st.pick; render(el, S); };
   el.querySelectorAll('[data-evdel]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); if (deleteEvent(b.dataset.evdel)) { st.pick = true; render(el, S); } }));
-  $('newEv').onclick = () => editEvent(null);
   bindSeg(el, 'tSeg', (k) => { st.sub = k; render(el, S); });
   el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => { const id = n.dataset.toggle; st.open[id] = !st.open[id]; n.parentElement.classList.toggle('open', st.open[id]); }));
   el.querySelectorAll('[data-calmode]').forEach((b) => b.addEventListener('click', () => { st.calMode = b.dataset.calmode; render(el, S); }));
@@ -49,7 +54,7 @@ export function render(el, S) {
   el.querySelectorAll('[data-agchk]').forEach((n) => n.addEventListener('change', () => { const r = db.get('event_agenda', n.dataset.agchk); db.put('event_agenda', { ...r, checked: n.checked ? 1 : 0 }); }));
   el.querySelectorAll('[data-grchk]').forEach((n) => n.addEventListener('change', () => { const r = db.get('event_gear', n.dataset.grchk); db.put('event_gear', { ...r, checked: n.checked ? 1 : 0 }); }));
   const add = $('jAdd');
-  if (add) {
+  if (add && D) {
     const info = () => { $('jInfo').innerHTML = dayInfo(D, $('jDay').value); };
     $('jDay').addEventListener('change', info); info();
     add.onclick = () => {

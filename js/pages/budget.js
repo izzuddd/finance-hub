@@ -84,7 +84,7 @@ function budgetView(c) {
   const mid = M.incomeLeg(c, 'mid'), end = M.incomeLeg(c, 'end');
   const midA = sum(leaves.filter((l) => l.timing === 'mid'), (l) => l.idr), endA = sum(leaves.filter((l) => l.timing === 'end'), (l) => l.idr);
   const unassigned = leaves.filter((l) => !l.timing).length;
-  let h = `<div class="alloc"><div class="row big"><span>Pemasukan</span><span>${fmtIDR(income)}</span></div>
+  let h = `<div class="alloc" data-col="l"><div class="row big"><span>Pemasukan</span><span>${fmtIDR(income)}</span></div>
     <div class="row"><span>Sudah dialokasikan</span><span>${fmtIDR(allocated)}</span></div>
     <div class="row"><span>Selisih</span><span class="${Math.abs(delta) < 1000 ? '' : moneyCls(delta)}"><b>${Math.abs(delta) < 1000 ? 'Pas teralokasi ✓' : delta > 0 ? fmtIDR(delta) + ' belum dialokasikan' : 'Lebih ' + fmtIDR(-delta)}</b></span></div>
     <div class="sep"></div>
@@ -92,7 +92,7 @@ function budgetView(c) {
     <div class="row"><span><b>Gaji end</b> ${fmtIDR(end)}</span><span>dipakai ${fmtIDR(endA)} → <b class="${moneyCls(end - endA)}">${fmtIDR(end - endA)}</b></span></div>
     ${unassigned ? `<div class="row"><span class="m">${unassigned} baris belum diberi waktu bayar (mid/end)</span><button class="btn small ghost" id="classify">atur</button></div>` : ''}</div>`;
   const accs = M.accounts(), filled = accs.filter((a) => M.initialBalance(c, a.name) != null).length;
-  h += collapsible('SALDO', `<div class="nm">SALDO AWAL<span class="amt">${filled}/${accs.length} akun</span></div><div class="pct">tgl 15</div>`, setupBody(c), st.open.SALDO);
+  h += collapsible('SALDO', `<div class="nm">SALDO AWAL<span class="amt">${filled}/${accs.length} akun</span></div><div class="pct">tgl 15</div>`, setupBody(c), st.open.SALDO, 'data-col="r"');
   PANELS.forEach(([k, name], i) => {
     const lines = M.panelLines(c, k);
     const groups = [];
@@ -101,7 +101,7 @@ function budgetView(c) {
       const leavesH = g.items.map(lineRow).join('');
       return g.name ? `<div class="bgrp"><div class="gh"><span>${esc(g.name)}</span><span>${fmtIDR(sum(g.items, (x) => x.idr))}</span></div>${leavesH}</div>` : leavesH;
     }).join('') + `<button class="btn fab-add small ghost" data-addline="${k}">+ baris ${name}</button>`;
-    h += collapsible(k, `<div class="nm">${name.toUpperCase()}<span class="amt">${fmtIDR(totals[i])}</span></div><div class="pct">${pct(totals[i], allocated)}%</div>`, body, st.open[k]);
+    h += collapsible(k, `<div class="nm">${name.toUpperCase()}<span class="amt">${fmtIDR(totals[i])}</span></div><div class="pct">${pct(totals[i], allocated)}%</div>`, body, st.open[k], 'data-col="r"');
   });
   const active = sb.filter((s) => s.value || s.talTotal || s.auto), idle = sb.filter((s) => !(s.value || s.talTotal || s.auto));
   const sbody = `<button class="btn ghost small" id="moDepB">✓ Setoran bulanan sekaligus</button>` + active.map((s) => {
@@ -116,8 +116,8 @@ function budgetView(c) {
       ${s.talangan.map((t) => `<div class="s sub"><span>${esc(t.item)}</span><span>${fmtIDR(t.perMonth)}</span></div>`).join('')}</div>`;
   }).join('') + (idle.length ? `<div class="note">Tidak disetor bulan ini: ${idle.map((s) => esc(s.name)).join(', ')}.${kamarLoanNote(c)}</div>` : '') +
     '<div class="note">Satu tujuan = satu kantong (lihat Rencana → Planning Kamar → 👛 Strategi kantong). Pengeluaran yang direncanakan dibayar dari kantongnya sendiri — tanpa pinjam antar kantong. Angka tebal = setoran tercatat bulan ini (sebelum ada setoran, dipakai target). Kamar Tinggede = <b>uang sendiri untuk bangun tahap 1</b>, bisa diedit ✎ per bulan sesuai kemampuan → forecast Rencana ikut menyesuaikan; pinjaman & cicilannya ada di Rencana → Kamar, tidak masuk Budget. <b>Centang kotak Saving = otomatis tercatat di Catat (kategori Saving) + Log Tabungan</b>; begitu juga centang baris Giving.</div>';
-  h += collapsible('SAVING', `<div class="nm">SAVING<span class="amt">${fmtIDR(savingTotal)}</span></div><div class="pct">${pct(savingTotal, allocated)}%</div>`, sbody, st.open.SAVING);
-  h += `<button class="btn ghost" id="copyNext">Salin budget ini ke ${cycleLabel(addMonths(c, 1), true)}</button>`;
+  h += collapsible('SAVING', `<div class="nm">SAVING<span class="amt">${fmtIDR(savingTotal)}</span></div><div class="pct">${pct(savingTotal, allocated)}%</div>`, sbody, st.open.SAVING, 'data-col="r"');
+  h += `<button class="btn ghost" id="copyNext" data-col="r">Salin budget ini ke ${cycleLabel(addMonths(c, 1), true)}</button>`;
   return h;
 }
 function lineRow(l) {
@@ -153,7 +153,7 @@ function editLine(id, panel, grp) {
   openModal({ title: id ? l.label : 'Baris budget baru', sub: `${l.panel} · ${cycleLabel(c, true)}`,
     fields: [
       { k: 'label', label: 'Nama', type: 'text', value: l.label },
-      { k: 'grp', label: 'Grup (opsional, mis. Food)', type: 'text', value: l.grp, note: groups.length ? 'Grup yang ada: ' + groups.map(esc).join(', ') : '' },
+      { k: 'grp', label: 'Grup (opsional)', type: 'combo', value: l.grp, options: groups, placeholder: 'pilih grup atau ketik baru', note: groups.length ? 'Pilih dari daftar, atau ketik nama grup baru.' : 'Ketik nama grup (mis. Food).' },
       { k: 'tl', label: 'Jumlah TL (kosongkan kalau IDR)', type: 'number', value: l.tl || '', onchange: (v, api) => { const t = parseAmount(v), r = parseAmount(api.el('rate').value); if (t) api.set('idr', Math.round(t * r)); } },
       { k: 'rate', label: 'Kurs TL→IDR', type: 'number', value: prevRate, note: 'Default kurs siklus lalu, seperti rumus =kurs×TL di sheet' },
       { k: 'idr', label: 'Jumlah IDR', type: 'number', value: l.idr || '' },

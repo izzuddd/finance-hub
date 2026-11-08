@@ -50,23 +50,28 @@ const wideMQ = matchMedia('(min-width: 720px)');
 let lastWide = wideMQ.matches;
 const TOPBAND = new Set(['seg', 'cyclebar', 'ratebar', 'hero', 'tiles', 'cal-bar', 'chips']);
 function applyWideLayout(el) {
-  if (el.querySelector(':scope > .wide-cols')) return; // already split (our own mutation) — leave it
-  document.body.removeAttribute('data-split');
-  if (!wideMQ.matches) return;
-  if (S.page === 'add' && document.body.dataset.catat === 'split') return; // Catat form builds its own split
+  const prebuilt = !!el.querySelector(':scope > .wide-cols'); // our own output, or a page that lays out its own columns (Trip)
+  if (!wideMQ.matches) { document.body.removeAttribute('data-split'); return; }
+  if (S.page === 'add' && document.body.dataset.catat === 'split') { document.body.removeAttribute('data-split'); return; } // Catat form builds its own split
+  if (prebuilt) { document.body.dataset.split = 'cols'; return; } // just activate the fixed-height split layout
   const kids = [...el.children];
   let i = 0; const top = [];
   while (i < kids.length && [...kids[i].classList].some((c) => TOPBAND.has(c))) top.push(kids[i++]);
   const rest = kids.slice(i);
-  if (rest.length < 2) return; // not worth splitting
+  if (rest.length < 2) { document.body.removeAttribute('data-split'); return; } // not worth splitting
   const heights = rest.map((n) => n.offsetHeight); // measure while still live
   const mk = (cls) => Object.assign(document.createElement('div'), { className: cls });
   const wrapTop = top.length ? mk('wide-top') : null;
   const cols = mk('wide-cols'), colL = mk('pane col-l'), colR = mk('pane col-r');
   cols.append(colL, colR);
   top.forEach((n) => wrapTop.appendChild(n));
+  // a page can pin a card to a column with data-col="l|r"; otherwise balance the rest by height
+  const forced = rest.some((n) => n.dataset.col);
   let hL = 0, hR = 0;
-  rest.forEach((n, k) => { if (hL <= hR) { colL.appendChild(n); hL += heights[k] + 12; } else { colR.appendChild(n); hR += heights[k] + 12; } });
+  rest.forEach((n, k) => {
+    const c = forced ? (n.dataset.col || 'l') : (hL <= hR ? 'l' : 'r');
+    if (c === 'r') { colR.appendChild(n); hR += heights[k] + 12; } else { colL.appendChild(n); hL += heights[k] + 12; }
+  });
   if (wrapTop) el.appendChild(wrapTop);
   el.appendChild(cols);
   document.body.dataset.split = 'cols';
