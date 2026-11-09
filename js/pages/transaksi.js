@@ -35,14 +35,12 @@ export function render(el, S) {
   if (!cycles.includes(st.cycle)) cycles.unshift(st.cycle);
   const searching = !!normalize(st.search);
   const cats = M.categoryNames();
-  el.innerHTML = card('Riwayat Transaksi', `<div class="hist-controls">
-      <input id="txSearch" type="search" inputmode="search" autocomplete="off" placeholder="🔍 Cari transaksi/transfer — mis. jago, migros, 150" value="${esc(st.search || '')}">
-      <div class="flex3" style="margin-top:8px">
-      <select id="txCycle">${cycles.map((c) => `<option value="${c}"${c === st.cycle ? ' selected' : ''}>${cycleLabel(c, true)}${c === cur ? ' (skr)' : ''}</option>`).join('')}</select>
-      <select id="txAcc"><option value="">Semua akun</option>${M.accountNames().map((a) => `<option${a === st.acc ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></div>
-      <div class="flex3">
-      <select id="txCat"><option value="">Semua kategori</option>${cats.map((c) => `<option${c === st.cat ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
-      <button class="btn small ghost" id="txMore"${searching ? ' style="display:none"' : ''}>${st.all ? 'Ringkas' : 'Semua'}</button></div></div>
+  el.innerHTML = card('Riwayat Transaksi', `<div class="hist-controls tx-controls">
+      <input id="txSearch" type="search" inputmode="search" autocomplete="off" placeholder="🔍 Cari — jago, migros, 150" value="${esc(st.search || '')}">
+      <select id="txCycle" aria-label="Periode">${cycles.map((c) => `<option value="${c}"${c === st.cycle ? ' selected' : ''}>${cycleLabel(c, true)}${c === cur ? ' (skr)' : ''}</option>`).join('')}</select>
+      <select id="txAcc" aria-label="Akun"><option value="">Semua akun</option>${M.accountNames().map((a) => `<option${a === st.acc ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
+      <select id="txCat" aria-label="Kategori"><option value="">Semua kategori</option>${cats.map((c) => `<option${c === st.cat ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
+      <button class="btn small ghost" id="txMore"${searching ? ' style="display:none"' : ''}>${st.all ? 'Ringkas' : 'Semua'}</button></div>
     <div id="txList">${listHTML()}</div>`);
 
   el.querySelectorAll('[data-tx]').forEach((n) => n.addEventListener('click', () => editTx(n.dataset.tx)));

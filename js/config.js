@@ -3,5 +3,5 @@
 // in the app under Pengaturan → Google Sheets (stored on that device only).
 export const CONFIG = {
   GOOGLE_CLIENT_ID: '',
-  APP_VERSION: '3.6.2',
+  APP_VERSION: '3.6.3',
 };

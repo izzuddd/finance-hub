@@ -59,6 +59,16 @@ body[data-page="transaksi"] .hist-controls {
   position: sticky; top: calc(var(--main-top, 60px) - 6px); z-index: 6;
   background: var(--card); margin: -2px -16px 0; padding: 8px 16px 10px; border-bottom: 1px solid var(--line);
 }
+/* search + filters on one compact line (wraps to 2 rows on a phone: search, then the 3 filters + toggle) */
+.tx-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tx-controls #txSearch { flex: 1 1 100%; min-width: 0; margin: 0; }
+.tx-controls select { flex: 1 1 60px; min-width: 0; margin: 0; }
+.tx-controls #txMore { flex: 0 0 auto; margin: 0; white-space: nowrap; }
+@media (min-width: 720px) {
+  .tx-controls { flex-wrap: nowrap; }
+  .tx-controls #txSearch { flex: 2 1 150px; }
+  .tx-controls select { flex: 1 1 110px; }
+}
 
 main { padding: 0 14px; max-width: 680px; margin: 0 auto; }
 .card { background: linear-gradient(180deg, var(--card), var(--card-2)); border: 1px solid var(--glass-line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 12px; }
