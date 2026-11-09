@@ -159,7 +159,17 @@ async function boot() {
   else if (sync.isConnected()) sync.syncNow({ interactive: !!back }).then(() => back && toast('Tersinkron ✓')).catch(() => {});
   // home-screen app opened with an expired Google session: renew it by a ~1 s redirect (no login screen)
   if (!back && sync.isConnected()) setTimeout(() => sync.silentRedirectIfNeeded(), 400);
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  // updateViaCache:'none' → the browser revalidates sw.js (and its precache list) on every load instead of
+  // trusting its HTTP cache, so a new VERSION is picked up on the next reload. Also nudge an update check,
+  // and reload once when a freshly-activated worker takes over so the new files show without manual hard-refresh.
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    const hadController = !!navigator.serviceWorker.controller; // false on first-ever install
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!reloaded && hadController) { reloaded = true; location.reload(); } // a new version just took over → load its files
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => reg.update().catch(() => {})).catch(() => {});
+  }
 }
 // the hidden iframe used for silent token renewal lands on this page: pass the token up and stop
 if (!sync.relayToParent()) boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="card">Gagal memuat: ${e.message}</div>`); console.error(e); });
