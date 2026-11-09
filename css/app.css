@@ -54,6 +54,11 @@ header .ver { font-size: 10.5px; color: var(--ink-3); opacity: .7; font-variant-
 .dot.error { background: var(--bad); } .dot.auth { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 #syncDot { cursor: pointer; width: 12px; height: 12px; border: 0; padding: 0; } .dot.offline { background: var(--warn); }
 @keyframes pulse { 50% { opacity: .35; } }
+/* Transaksi: keep the search bar + filters pinned just under the header while the list scrolls */
+body[data-page="transaksi"] .hist-controls {
+  position: sticky; top: calc(var(--main-top, 60px) - 6px); z-index: 6;
+  background: var(--card); margin: -2px -16px 0; padding: 8px 16px 10px; border-bottom: 1px solid var(--line);
+}
 
 main { padding: 0 14px; max-width: 680px; margin: 0 auto; }
 .card { background: linear-gradient(180deg, var(--card), var(--card-2)); border: 1px solid var(--glass-line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 12px; }
