@@ -697,17 +697,47 @@ export function baseCashflow(scenarioId, from, to) {
     return rows;
   });
 }
+// ------------------------------------------------------------------ career roadmap "what-if" cases
+// Fallback paths if the Turkey work/PhD stops (kimlik habis Jul 2027). From a transition month each case
+// replaces the projected Turkey income with its own income + extra cost (e.g. UKT); the rest of the plan
+// (budget, kamar, trips) stays, so the projection shows whether that path is still affordable.
+// Numbers are editable assumptions, not fixed figures — edit per case in the Proyeksi cashflow view.
+const CAREER_CASES = [
+  { id: 'turki', title: 'Lanjut di Turki (sekarang)', trans: '', income: 0, thr: 0, cost: 0, note: 'Baseline: pemasukan proyeksi seperti sekarang, tanpa perubahan.' },
+  { id: '2a', title: 'TAID Bandung + transfer S3 ke ITB', trans: '2027-08', income: 28000000, thr: 14000000, cost: 3500000, note: 'Tetap kerja (TAID), UKT ITB bayar sendiri ±Rp 21 jt/smt (±3,5 jt/bln). Asumsi — sesuaikan.' },
+  { id: '2b', title: 'TAID Bandung + drop S3', trans: '2027-08', income: 28000000, thr: 14000000, cost: 0, note: 'Tetap kerja, lepas S3, tanpa biaya kuliah. Asumsi — sesuaikan.' },
+  { id: '3a', title: 'Keluar TAID + S3 LPDP ITB', trans: '2027-08', income: 6000000, thr: 0, cost: 0, note: 'No-work; stipend LPDP ±Rp 6 jt/bln, UKT ditanggung; ikatan ~8 th. Asumsi — sesuaikan.' },
+  { id: '3c', title: 'Keluar TAID + S3 non-LPDP ITB', trans: '2027-08', income: 4000000, thr: 0, cost: 2000000, note: 'Parsial (RA/TA ±Rp 4 jt/bln), sebagian UKT sendiri. Asumsi — sesuaikan.' },
+  { id: '3d', title: 'Keluar TAID + S3 LPDP luar negeri', trans: '2027-08', income: 20000000, thr: 0, cost: 0, note: 'No-work; stipend LPDP LN ±Rp 20 jt/bln, UKT ditanggung; LDM. Asumsi — sesuaikan.' },
+  { id: '3e', title: 'Pindah kerja', trans: '2027-08', income: 32000000, thr: 16000000, cost: 0, note: 'Gaji kantor baru; S3 fleksibel (lanjut/jeda/transfer). Asumsi — sesuaikan.' },
+];
+export function careerCases() {
+  const stored = db.setting('careerCases', null);
+  return Array.isArray(stored) && stored.length ? stored : CAREER_CASES;
+}
+export const careerCase = (id) => careerCases().find((c) => c.id === id) || null;
+export function saveCareerCase(id, patch) {
+  db.setSetting('careerCases', careerCases().map((c) => (c.id === id ? { ...c, ...patch } : c)));
+}
+
 /** Budget → Proyeksi cashflow: the base cash flow plus what the room project takes (stage 1 own money, loan repayments). */
-export function cashflowProjection(scenarioId, { from = currentCycle(), to = '2030-12' } = {}) {
-  return memo('cf|' + scenarioId + '|' + from + '|' + to, () => {
+export function cashflowProjection(scenarioId, { from = currentCycle(), to = '2030-12', career = null } = {}) {
+  return memo('cf|' + scenarioId + '|' + from + '|' + to + '|' + (career?.id || ''), () => {
     const F = scenarioId ? forecast(scenarioId, { from, to }) : null;
     const rows = (F ? F.rows : baseCashflow(scenarioId, from, to)).map((b) => {
       const r = { ...b, kamarOwn: Math.max(0, (b.cost1 || 0) - (b.draw || 0) - (b.cross || 0)), repay: b.repay || 0, crossRepay: b.crossRepay || 0 };
+      // career what-if: from the transition month, swap Turkey income for the case's income (+ THR) and extra cost (UKT)
+      if (career && career.trans && r.month >= career.trans) {
+        const thr = lebaranCycle(Number(r.month.slice(0, 4))) === r.month ? Math.round(Number(career.thr) || 0) : 0;
+        r.careerCase = career.id; r.careerCost = Math.round(Number(career.cost) || 0);
+        r.income = Math.round(Number(career.income) || 0) + thr; r.thr = thr; r.leaveCut = 0;
+        r.net = r.income - r.out - r.talangan - r.careerCost;
+      }
       r.afterKamar = r.net + (b.seed || 0) - r.kamarOwn - r.repay - (b.pay2 || 0) - (b.crossRepay || 0);
       return r;
     });
     let cum = 0; rows.forEach((r) => { cum += r.afterKamar; r.cum = cum; });
-    return { rows, scenario: F?.scenario || null, forecast: F };
+    return { rows, scenario: F?.scenario || null, forecast: F, career };
   });
 }
 // Flights are booked 3–4 months ahead, so a trip doesn't take its money in the month it starts:
