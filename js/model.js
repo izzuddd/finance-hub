@@ -206,7 +206,9 @@ export function savingBudget(cycle) {
   const anyDeposit = db.all('saving_log').some((l) => Number(l.onBudget) && String(l.date).slice(0, 7) === cycle);
   return pocketsList().map((p) => {
     const tr = db.get('pocket_targets', cycle + '|' + p.name) || {};
-    const tal = talanganOpen().filter((t) => t.usage === p.name && talanganDue(t, cycle));
+    // instalments attributable to THIS cycle (recorded payment, else planned) — so a just-paid 1-month
+    // talangan still shows its amount in the cycle it was paid instead of Rp 0.
+    const tal = talanganAll().filter((t) => t.usage === p.name).map((t) => ({ ...t, perMonth: talanganInstalment(t, cycle) })).filter((t) => t.perMonth > 0);
     const actual = pocketMonthActual(cycle, p.name);
     // like the sheet's SAVING panel: once deposits are logged for the cycle, the budget = actual deposits
     const value = anyDeposit ? actual : Number(tr.target) || 0;
@@ -265,6 +267,26 @@ export const talanganOpen = () => talanganAll().filter((t) => !t.done);
 // A talangan is only "due" (payable) from its start month onward — a future-dated one
 // must not appear as payable in earlier cycles' Setoran bulanan / Budget.
 export const talanganDue = (t, cycle) => !t.start || cycle >= String(t.start).slice(0, 7);
+/** How much a talangan contributes in ONE specific cycle: the payment recorded that cycle if any,
+ *  otherwise its planned instalment when that cycle is a scheduled (unpaid) billing month, else 0.
+ *  Using this instead of the forward residual `perMonth` keeps a fully-paid instalment visible in the
+ *  cycle it was paid (e.g. a 1-month talangan) instead of collapsing to 0 once monthsLeft hits 0. */
+export function talanganInstalment(t, cycle) {
+  const pay = t.payments.find((p) => p.cycle === cycle);
+  if (pay) return Number(pay.amount) || 0;
+  if (t.done || t.sisa <= 0.5 || t.monthsLeft <= 0 || !talanganDue(t, cycle)) return 0;
+  const now = currentCycle();
+  const paidCycles = new Set(t.payments.map((p) => p.cycle));
+  let m = t.start ? String(t.start).slice(0, 7) : cycle, left = t.monthsLeft;
+  for (let guard = 0; left > 0 && guard < 240; guard++, m = addMonths(m, 1)) {
+    if (paidCycles.has(m)) continue;       // already paid → doesn't bill again
+    if (m < now) continue;                 // unpaid months in the past don't move the plan
+    if (m < cycle) { left--; continue; }   // earlier instalments are used up before this cycle
+    if (m > cycle) break;                  // this cycle is not a billing month
+    return t.perMonth;                      // m === cycle → scheduled instalment
+  }
+  return 0;
+}
 export function pockets() {
   const log = db.all('saving_log');
   const open = talanganOpen();
