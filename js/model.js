@@ -703,13 +703,13 @@ export function baseCashflow(scenarioId, from, to) {
 // (budget, kamar, trips) stays, so the projection shows whether that path is still affordable.
 // Numbers are editable assumptions, not fixed figures — edit per case in the Proyeksi cashflow view.
 const CAREER_CASES = [
-  { id: 'turki', title: 'Lanjut di Turki (sekarang)', trans: '', income: 0, thr: 0, cost: 0, note: 'Baseline: pemasukan proyeksi seperti sekarang, tanpa perubahan.' },
-  { id: '2a', title: 'TAID Bandung + transfer S3 ke ITB', trans: '2027-08', income: 28000000, thr: 14000000, cost: 3500000, note: 'Tetap kerja (TAID), UKT ITB bayar sendiri ±Rp 21 jt/smt (±3,5 jt/bln). Asumsi — sesuaikan.' },
-  { id: '2b', title: 'TAID Bandung + drop S3', trans: '2027-08', income: 28000000, thr: 14000000, cost: 0, note: 'Tetap kerja, lepas S3, tanpa biaya kuliah. Asumsi — sesuaikan.' },
-  { id: '3a', title: 'Keluar TAID + S3 LPDP ITB', trans: '2027-08', income: 6000000, thr: 0, cost: 0, note: 'No-work; stipend LPDP ±Rp 6 jt/bln, UKT ditanggung; ikatan ~8 th. Asumsi — sesuaikan.' },
-  { id: '3c', title: 'Keluar TAID + S3 non-LPDP ITB', trans: '2027-08', income: 4000000, thr: 0, cost: 2000000, note: 'Parsial (RA/TA ±Rp 4 jt/bln), sebagian UKT sendiri. Asumsi — sesuaikan.' },
-  { id: '3d', title: 'Keluar TAID + S3 LPDP luar negeri', trans: '2027-08', income: 20000000, thr: 0, cost: 0, note: 'No-work; stipend LPDP LN ±Rp 20 jt/bln, UKT ditanggung; LDM. Asumsi — sesuaikan.' },
-  { id: '3e', title: 'Pindah kerja', trans: '2027-08', income: 32000000, thr: 16000000, cost: 0, note: 'Gaji kantor baru; S3 fleksibel (lanjut/jeda/transfer). Asumsi — sesuaikan.' },
+  { id: 'turki', title: 'Lanjut di Turki (sekarang)', trans: '', income: 0, thr: 0, cost: 0, note: 'Baseline: pemasukan proyeksi seperti sekarang (±40 jt/bln; gaji pokok + tunjangan MA/PA/lunch Turki), tanpa perubahan.' },
+  { id: '2a', title: 'TAID Bandung + transfer S3 ke ITB', trans: '2027-08', income: 15645600, thr: 15645600, cost: 3500000, note: 'Pindah ke TAID Bandung → terima gaji pokok ±15,6 jt/bln (tunjangan MA/PA/lunch Turki tidak berlaku lagi); THR 1× gaji pokok. UKT ITB bayar sendiri ±Rp 21 jt/smt (±3,5 jt/bln). Sesuaikan bila beda.' },
+  { id: '2b', title: 'TAID Bandung + drop S3', trans: '2027-08', income: 15645600, thr: 15645600, cost: 0, note: 'Gaji pokok TAID Bandung ±15,6 jt/bln + THR, tanpa biaya kuliah (lepas S3). Sesuaikan bila beda.' },
+  { id: '3a', title: 'Keluar TAID + S3 LPDP ITB (DN)', trans: '2027-08', income: 4500000, thr: 0, cost: 0, note: 'No-work; dana hidup LPDP dalam negeri ±Rp 4–4,5 jt/bln (termasuk tunjangan keluarga doktor), UKT ditanggung penuh; ikatan ~8 th. Approx — sesuaikan.' },
+  { id: '3c', title: 'Keluar TAID + S3 non-LPDP ITB', trans: '2027-08', income: 4000000, thr: 0, cost: 2000000, note: 'Parsial: RA/TA atau Beasiswa Unggulan ±Rp 4 jt/bln, sebagian UKT sendiri (±2 jt/bln). Approx — sesuaikan.' },
+  { id: '3d', title: 'Keluar TAID + S3 LPDP luar negeri', trans: '2027-08', income: 22000000, thr: 0, cost: 0, note: 'No-work; dana hidup LPDP LN ±$1.300–1.500/bln (±Rp 22 jt), UKT + tiket ditanggung; LDM. Approx — sesuaikan per negara.' },
+  { id: '3e', title: 'Pindah kerja', trans: '2027-08', income: 15645600, thr: 15645600, cost: 0, note: 'Default = setara gaji pokok ±15,6 jt/bln + THR; S3 fleksibel. Ganti dengan tawaran gaji kantor baru.' },
 ];
 export function careerCases() {
   const stored = db.setting('careerCases', null);
