@@ -419,7 +419,7 @@ function cashflowView() {
   const total = sum(rows, (r) => r.afterKamar), neg = rows.filter((r) => r.afterKamar < -1000);
   const minR = rows.reduce((m, r) => (!m || r.afterKamar < m.afterKamar ? r : m), null);
   let h = card('Kasus roadmap karir', `<div class="chips" style="margin:0 0 8px">${careers.map((c) => `<button data-cfcareer="${c.id}" class="${c.id === st.career ? 'active' : ''}">${esc(c.id === 'turki' ? 'Turki' : c.id.toUpperCase())}</button>`).join('')}</div>`
-    + `<div class="note" style="margin:0"><b>${esc(career.title)}</b>${career.trans ? ` · mulai ${cycleLabel(career.trans, true)} · income ${fmtShort(career.income)}/bln${career.thr ? ' + THR ' + fmtShort(career.thr) : ''}${career.cost ? ' · biaya ' + fmtShort(career.cost) + '/bln' : ''}` : ''} <button class="refresh" id="cfCareerEdit">ubah angka</button><br>${esc(career.note)}</div>`);
+    + `<div class="note" style="margin:0"><b>${esc(career.title)}</b>${career.trans ? ` · mulai ${cycleLabel(career.trans, true)} · income ${fmtShort(career.income)}/bln${career.growth ? ' (+' + career.growth + '%/th)' : ''}${career.thr ? ' + THR ' + fmtShort(career.thr) : ''}${career.cost ? ' · biaya ' + fmtShort(career.cost) + '/bln' : ''}` : ''} <button class="refresh" id="cfCareerEdit">ubah angka</button><br>${esc(career.note)}</div>`);
   h += scs.length > 1 ? `<div class="chips">${scs.map((s) => `<button data-cfsc="${s.id}" class="${s.id === st.sc ? 'active' : ''}">Kamar: ${esc(s.name)}</button>`).join('')}</div>` : '';
   h += tiles([
     tile('Sisa s/d Des 2030', `<span class="${moneyCls(total)}">${fmtIDR(total)}</span>`, '<div class="m">setelah budget, talangan & kamar</div>'),
@@ -458,10 +458,11 @@ function careerEdit(el, S) {
       { k: 'title', label: 'Nama kasus', type: 'text', value: c.title },
       { k: 'trans', label: 'Mulai berlaku (siklus)', type: 'month', value: c.trans, note: 'Kosongkan = baseline tanpa perubahan income.' },
       { k: 'income', label: 'Pemasukan / bulan (IDR)', type: 'money', value: c.income || '' },
+      { k: 'growth', label: 'Kenaikan gaji / tahun (%)', type: 'number', value: c.growth ?? '', note: 'Naik tiap Januari. Gaji pokok TAID ±6,5%; beasiswa biasanya 0.' },
       { k: 'thr', label: 'THR / tahun (IDR, di siklus Lebaran)', type: 'money', value: c.thr || '' },
       { k: 'cost', label: 'Biaya ekstra / bulan — mis. UKT (IDR)', type: 'money', value: c.cost || '' },
       { k: 'note', label: 'Catatan', type: 'text', value: c.note }],
-    onSave: (v) => { M.saveCareerCase(st.career, { title: v.title, trans: v.trans || '', income: Number(v.income) || 0, thr: Number(v.thr) || 0, cost: Number(v.cost) || 0, note: v.note }); toast('Kasus diperbarui ✓'); render(el, S); } });
+    onSave: (v) => { M.saveCareerCase(st.career, { title: v.title, trans: v.trans || '', income: Number(v.income) || 0, growth: Number(v.growth) || 0, thr: Number(v.thr) || 0, cost: Number(v.cost) || 0, note: v.note }); toast('Kasus diperbarui ✓'); render(el, S); } });
 }
 function saveInit(c) {
   M.accounts().forEach((a) => {

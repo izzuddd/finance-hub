@@ -703,13 +703,13 @@ export function baseCashflow(scenarioId, from, to) {
 // (budget, kamar, trips) stays, so the projection shows whether that path is still affordable.
 // Numbers are editable assumptions, not fixed figures — edit per case in the Proyeksi cashflow view.
 const CAREER_CASES = [
-  { id: 'turki', title: 'Lanjut di Turki (sekarang)', trans: '', income: 0, thr: 0, cost: 0, note: 'Baseline: pemasukan proyeksi seperti sekarang (±40 jt/bln; gaji pokok + tunjangan MA/PA/lunch Turki), tanpa perubahan.' },
-  { id: '2a', title: 'TAID Bandung + transfer S3 ke ITB', trans: '2027-08', income: 15645600, thr: 15645600, cost: 3500000, note: 'Pindah ke TAID Bandung → terima gaji pokok ±15,6 jt/bln (tunjangan MA/PA/lunch Turki tidak berlaku lagi); THR 1× gaji pokok. UKT ITB bayar sendiri ±Rp 21 jt/smt (±3,5 jt/bln). Sesuaikan bila beda.' },
-  { id: '2b', title: 'TAID Bandung + drop S3', trans: '2027-08', income: 15645600, thr: 15645600, cost: 0, note: 'Gaji pokok TAID Bandung ±15,6 jt/bln + THR, tanpa biaya kuliah (lepas S3). Sesuaikan bila beda.' },
-  { id: '3a', title: 'Keluar TAID + S3 LPDP ITB (DN)', trans: '2027-08', income: 4500000, thr: 0, cost: 0, note: 'No-work; dana hidup LPDP dalam negeri ±Rp 4–4,5 jt/bln (termasuk tunjangan keluarga doktor), UKT ditanggung penuh; ikatan ~8 th. Approx — sesuaikan.' },
-  { id: '3c', title: 'Keluar TAID + S3 non-LPDP ITB', trans: '2027-08', income: 4000000, thr: 0, cost: 2000000, note: 'Parsial: RA/TA atau Beasiswa Unggulan ±Rp 4 jt/bln, sebagian UKT sendiri (±2 jt/bln). Approx — sesuaikan.' },
-  { id: '3d', title: 'Keluar TAID + S3 LPDP luar negeri', trans: '2027-08', income: 22000000, thr: 0, cost: 0, note: 'No-work; dana hidup LPDP LN ±$1.300–1.500/bln (±Rp 22 jt), UKT + tiket ditanggung; LDM. Approx — sesuaikan per negara.' },
-  { id: '3e', title: 'Pindah kerja', trans: '2027-08', income: 15645600, thr: 15645600, cost: 0, note: 'Default = setara gaji pokok ±15,6 jt/bln + THR; S3 fleksibel. Ganti dengan tawaran gaji kantor baru.' },
+  { id: 'turki', title: 'Lanjut di Turki (sekarang)', trans: '', income: 0, thr: 0, cost: 0, growth: 0, note: 'Baseline: pemasukan proyeksi seperti sekarang (±40 jt/bln; gaji pokok + tunjangan MA/PA/lunch Turki, naik tiap Januari), tanpa perubahan.' },
+  { id: '2a', title: 'TAID Bandung + transfer S3 ke ITB', trans: '2027-08', income: 15645600, thr: 15645600, cost: 3500000, growth: 6.5, note: 'Pindah ke TAID Bandung → terima gaji pokok ±15,6 jt/bln (tunjangan MA/PA/lunch Turki tidak berlaku lagi); THR 1× gaji pokok; naik ±6,5%/th. UKT ITB bayar sendiri ±Rp 21 jt/smt (±3,5 jt/bln). Sesuaikan bila beda.' },
+  { id: '2b', title: 'TAID Bandung + drop S3', trans: '2027-08', income: 15645600, thr: 15645600, cost: 0, growth: 6.5, note: 'Gaji pokok TAID Bandung ±15,6 jt/bln + THR, naik ±6,5%/th, tanpa biaya kuliah (lepas S3). Sesuaikan bila beda.' },
+  { id: '3a', title: 'Keluar TAID + S3 LPDP ITB (DN)', trans: '2027-08', income: 4500000, thr: 0, cost: 0, growth: 0, note: 'No-work; dana hidup LPDP dalam negeri ±Rp 4–4,5 jt/bln (termasuk tunjangan keluarga doktor), UKT ditanggung penuh; ikatan ~8 th. Nominal pemerintah (default tanpa kenaikan). Approx — sesuaikan.' },
+  { id: '3c', title: 'Keluar TAID + S3 non-LPDP ITB', trans: '2027-08', income: 4000000, thr: 0, cost: 2000000, growth: 5, note: 'Parsial: RA/TA atau Beasiswa Unggulan ±Rp 4 jt/bln (naik ±5%/th), sebagian UKT sendiri (±2 jt/bln). Approx — sesuaikan.' },
+  { id: '3d', title: 'Keluar TAID + S3 LPDP luar negeri', trans: '2027-08', income: 22000000, thr: 0, cost: 0, growth: 0, note: 'No-work; dana hidup LPDP LN ±$1.300–1.500/bln (±Rp 22 jt), UKT + tiket ditanggung; LDM. Nominal pemerintah (default tanpa kenaikan). Approx — sesuaikan per negara.' },
+  { id: '3e', title: 'Pindah kerja', trans: '2027-08', income: 15645600, thr: 15645600, cost: 0, growth: 6.5, note: 'Default = setara gaji pokok ±15,6 jt/bln + THR, naik ±6,5%/th; S3 fleksibel. Ganti dengan tawaran gaji kantor baru.' },
 ];
 export function careerCases() {
   const stored = db.setting('careerCases', null);
@@ -728,9 +728,11 @@ export function cashflowProjection(scenarioId, { from = currentCycle(), to = '20
       const r = { ...b, kamarOwn: Math.max(0, (b.cost1 || 0) - (b.draw || 0) - (b.cross || 0)), repay: b.repay || 0, crossRepay: b.crossRepay || 0 };
       // career what-if: from the transition month, swap Turkey income for the case's income (+ THR) and extra cost (UKT)
       if (career && career.trans && r.month >= career.trans) {
-        const thr = lebaranCycle(Number(r.month.slice(0, 4))) === r.month ? Math.round(Number(career.thr) || 0) : 0;
+        // yearly raise, compounding each January from the transition year (like the base projection)
+        const g = Math.pow(1 + (Number(career.growth) || 0) / 100, Math.max(0, Number(r.month.slice(0, 4)) - Number(career.trans.slice(0, 4))));
+        const thr = lebaranCycle(Number(r.month.slice(0, 4))) === r.month ? Math.round((Number(career.thr) || 0) * g) : 0;
         r.careerCase = career.id; r.careerCost = Math.round(Number(career.cost) || 0);
-        r.income = Math.round(Number(career.income) || 0) + thr; r.thr = thr; r.leaveCut = 0;
+        r.income = Math.round((Number(career.income) || 0) * g) + thr; r.thr = thr; r.leaveCut = 0;
         r.net = r.income - r.out - r.talangan - r.careerCost;
       }
       r.afterKamar = r.net + (b.seed || 0) - r.kamarOwn - r.repay - (b.pay2 || 0) - (b.crossRepay || 0);
