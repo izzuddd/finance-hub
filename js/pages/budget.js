@@ -7,7 +7,7 @@ import { $, toast, openModal, tile, tiles, card, row, seg, bindSeg, collapsible,
 import { fmtShort, groupBy } from '../util.js';
 import { monthlyDeposit } from './saving.js';
 
-const st = { cycle: null, sub: 'budget', open: {}, sc: null, career: '2a' };
+const st = { cycle: null, sub: 'budget', open: {}, sc: null, career: '2a', gcareer: '2a' };
 const PANELS = [['NEEDS', 'Needs'], ['WANTS', 'Wants'], ['GIVING', 'Giving']];
 
 export function render(el, S) {
@@ -61,6 +61,16 @@ export function render(el, S) {
   el.querySelectorAll('[data-inc]').forEach((n) => n.addEventListener('click', () => editIncome(n.dataset.inc)));
   const bind = (id, fn) => { const n = $(id); if (n) n.onclick = fn; };
   bind('addIncome', () => editIncome(null));
+  bind('goGaji', () => { st.sub = 'gaji'; render(el, S); });
+  if (st.sub === 'gaji') {
+    el.querySelectorAll('[data-gcareer]').forEach((b) => b.addEventListener('click', () => { st.gcareer = b.dataset.gcareer; render(el, S); }));
+    bind('gCareerEdit', () => careerEdit(el, S, st.gcareer));
+    bind('gApply', () => {
+      if (!confirm('Timpa Pemasukan ' + cycleLabel(st.cycle, true) + ' dengan angka skenario ' + st.gcareer.toUpperCase() + '? (simulasi "bagaimana kalau"; gaji nyata bisa dikembalikan lewat 🧮 Simulasi gaji)')) return;
+      const ci = M.applyCareerIncome(st.gcareer, st.cycle);
+      if (ci) { toast('Pemasukan → skenario ' + fmtIDR(ci.total) + ' ✓'); render(el, S); }
+    });
+  }
   bind('moDepB', () => monthlyDeposit(st.cycle));
   bind('simBtn', () => simulator(c));
   bind('classify', () => classify(c));
@@ -86,7 +96,7 @@ function budgetView(c) {
   const mid = M.incomeLeg(c, 'mid'), end = M.incomeLeg(c, 'end');
   const midA = sum(leaves.filter((l) => l.timing === 'mid'), (l) => l.idr), endA = sum(leaves.filter((l) => l.timing === 'end'), (l) => l.idr);
   const unassigned = leaves.filter((l) => !l.timing).length;
-  let h = `<div class="alloc" data-col="l"><div class="row big"><span>Pemasukan</span><span>${fmtIDR(income)}</span></div>
+  let h = `<div class="alloc" data-col="l"><div class="row big"><span>Pemasukan${M.incomeIsScenario(c) ? ' <span class="badge w">simulasi</span>' : ''} <button class="refresh" id="goGaji">rincian ›</button></span><span>${fmtIDR(income)}</span></div>
     <div class="row"><span>Sudah dialokasikan</span><span>${fmtIDR(allocated)}</span></div>
     <div class="row"><span>Selisih</span><span class="${Math.abs(delta) < 1000 ? '' : moneyCls(delta)}"><b>${Math.abs(delta) < 1000 ? 'Pas teralokasi ✓' : delta > 0 ? fmtIDR(delta) + ' belum dialokasikan' : 'Lebih ' + fmtIDR(-delta)}</b></span></div>
     <div class="sep"></div>
@@ -202,21 +212,45 @@ function editTarget(pocket) {
 function incomeView(c) {
   const lines = M.incomeLines(c);
   const p = db.get('payroll', c);
-  let h = card('Pemasukan ' + cycleLabel(c, true), lines.map((i) => row(esc(i.label) + ` <span class="badge">${esc(i.leg)}</span>` + (i.source === 'actual' ? ' <span class="badge g">aktual</span>' : i.source === 'sim' ? ' <span class="badge w">simulasi</span>' : ''),
+  const scen = M.incomeIsScenario(c);
+  if (st.open.INC === undefined) st.open.INC = true; // Pemasukan expanded by default
+  const incBody = lines.map((i) => row(esc(i.label) + ` <span class="badge">${esc(i.leg)}</span>` + (i.source === 'actual' ? ' <span class="badge g">aktual</span>' : i.source === 'scenario' ? ' <span class="badge w">simulasi</span>' : i.source === 'sim' ? ' <span class="badge w">simulasi</span>' : ''),
     '', fmtIDR(i.amount) + `<button class="edit-ico" data-inc="${i.id}">✎</button>`)).join('') +
     `<div class="btotal"><span>Total take-home</span><span>${fmtIDR(M.incomeTotal(c))}</span></div>
      <div class="flex2"><button class="btn small ghost" id="addIncome">+ pemasukan lain</button><button class="btn small" id="simBtn">🧮 Simulasi gaji</button></div>
-     <div class="note">Mid = gaji tgl 15 (MA + PA + lunch). End = gaji akhir bulan (pokok − pajak). Setelah uang masuk, ✎ lalu isi jumlah <b>aktual</b> — siklus ini dikalibrasi ke angka nyata.</div>`);
+     ${scen ? '<div class="note">Pemasukan siklus ini sedang memakai <b>angka skenario karir</b> (simulasi). Buka 🧮 Simulasi gaji atau ✎ untuk mengembalikan ke gaji nyata.</div>' : '<div class="note">Mid = gaji tgl 15 (MA + PA + lunch). End = gaji akhir bulan (pokok − pajak). Setelah uang masuk, ✎ lalu isi jumlah <b>aktual</b> — siklus ini dikalibrasi ke angka nyata.</div>'}`;
+  let h = collapsible('INC', `<div class="nm">PEMASUKAN ${esc(cycleLabel(c, true).toUpperCase())}${scen ? ' <span class="badge w">simulasi</span>' : ''}<span class="amt">${fmtIDR(M.incomeTotal(c))}</span></div><div class="pct"></div>`, incBody, st.open.INC);
   const L = M.leaveCut(c);
   if (L && !(p && (Number(p.absent) || Number(p.outDays)))) {
     h += `<div class="alloc"><div class="row"><b>✈️ Jadwal cuti</b><span></span></div><div class="row"><span>${esc(L.trips.join(', '))}: ${L.absent} hari absen, ${L.outDays} hari di luar Turki → gaji mid siklus ini ±<b class="neg">${fmtIDR(L.cut)}</b> lebih kecil. Buka 🧮 Simulasi gaji — angkanya sudah terisi.</span></div></div>`;
   }
   if (p) {
-    h += card('Data payroll', row('Hari kerja', '', String(p.workDays || '–')) + row('Cuti tidak dibayar', '', String(p.unpaid || 0)) +
+    const payBody = row('Hari kerja', '', String(p.workDays || '–')) + row('Cuti tidak dibayar', '', String(p.unpaid || 0)) +
       row('Hari absen (lunch tidak dibayar)', '', String(p.absent || 0)) + row('Hari di luar Turki (MA prorata)', '', String(p.outDays || 0)) +
-      (p.actualMid ? row('Aktual gaji mid', '', fmtIDR(p.actualMid)) : '') + (p.actualEnd ? row('Aktual gaji end', '', fmtIDR(p.actualEnd)) : ''));
+      (p.actualMid ? row('Aktual gaji mid', '', fmtIDR(p.actualMid)) : '') + (p.actualEnd ? row('Aktual gaji end', '', fmtIDR(p.actualEnd)) : '');
+    h += collapsible('PAY', `<div class="nm">DATA PAYROLL<span class="amt">${p.workDays ? p.workDays + ' hari kerja' : ''}</span></div><div class="pct"></div>`, payBody, st.open.PAY);
   }
+  h += careerSimSection(c);
   return h;
+}
+/** Collapsible "what-if" income simulator from the career-roadmap cases; can overwrite this cycle's Pemasukan. */
+function careerSimSection(c) {
+  const cases = M.careerCases().filter((x) => x.id !== 'turki'); // "turki" = baseline, nothing to override with
+  if (!cases.some((x) => x.id === st.gcareer)) st.gcareer = cases[0]?.id || '2a';
+  const sel = M.careerCase(st.gcareer);
+  const ci = M.careerIncomeFor(st.gcareer, c); // null when c is before the case's transition month
+  let body = `<div class="chips" style="margin:0 0 8px">${cases.map((x) => `<button data-gcareer="${x.id}" class="${x.id === st.gcareer ? 'active' : ''}">${esc(x.id.toUpperCase())}</button>`).join('')}</div>`
+    + `<div class="note" style="margin:0 0 8px"><b>${esc(sel.title)}</b> · income ${fmtShort(sel.income)}/bln${sel.growth ? ' (+' + sel.growth + '%/th)' : ''}${sel.thr ? ' + THR ' + fmtShort(sel.thr) : ''}${sel.cost ? ' · biaya ' + fmtShort(sel.cost) + '/bln' : ''} <button class="refresh" id="gCareerEdit">ubah angka</button><br>${esc(sel.note)}</div>`;
+  if (ci) {
+    body += row('Pemasukan skenario di ' + cycleLabel(c, true), sel.trans ? 'mulai ' + cycleLabel(sel.trans, true) : '', '<b>' + fmtIDR(ci.income) + '</b>')
+      + (ci.thr ? row('· termasuk THR (siklus Lebaran)', '', fmtIDR(ci.thr)) : '')
+      + `<div class="btotal"><span>Total skenario</span><span>${fmtIDR(ci.total)}</span></div>`
+      + `<button class="btn" id="gApply">Jadikan Pemasukan ${cycleLabel(c, true)}</button>`
+      + `<div class="note">Menimpa Pemasukan siklus ini dengan angka skenario — wadah simulasi "bagaimana kalau". Gaji nyata/simulasi bisa dikembalikan lewat 🧮 Simulasi gaji.</div>`;
+  } else {
+    body += `<div class="note">Kasus ini berlaku mulai ${sel.trans ? cycleLabel(sel.trans, true) : '—'}. Buka siklus ${sel.trans ? cycleLabel(sel.trans, true) + ' atau sesudahnya' : 'yang sesuai'} untuk menerapkannya ke Pemasukan. Angkanya tetap bisa diatur di sini (ubah angka) & dipakai di Proyeksi cashflow.</div>`;
+  }
+  return collapsible('CSIM', `<div class="nm">SIMULASI INCOME — KASUS KARIR<span class="amt">${ci ? fmtIDR(ci.total) : '—'}</span></div><div class="pct">${esc(st.gcareer.toUpperCase())}</div>`, body, st.open.CSIM);
 }
 function editIncome(id) {
   const c = st.cycle;
@@ -450,10 +484,10 @@ function cashflowDetail(m) {
       ${r.kamarOwn ? ln('Kamar tahap 1 (uang sendiri)', r.kamarOwn, true) : ''}${r.repay ? ln('Cicilan pinjaman kamar', r.repay, true) : ''}
       <div class="sep"></div>${ln('<b>Sisa akhir</b>', r.afterKamar)}${ln('Kumulatif sejak ' + cycleLabel(currentCycle(), true), r.cum)}</div>` }] });
 }
-function careerEdit(el, S) {
-  const c = M.careerCase(st.career);
+function careerEdit(el, S, id = st.career) {
+  const c = M.careerCase(id);
   if (!c) return;
-  openModal({ title: 'Kasus ' + (st.career === 'turki' ? 'Turki' : st.career.toUpperCase()), sub: 'Angka ini asumsi — sesuaikan dengan kondisi nyata.',
+  openModal({ title: 'Kasus ' + (id === 'turki' ? 'Turki' : id.toUpperCase()), sub: 'Angka ini asumsi — sesuaikan dengan kondisi nyata.',
     fields: [
       { k: 'title', label: 'Nama kasus', type: 'text', value: c.title },
       { k: 'trans', label: 'Mulai berlaku (siklus)', type: 'month', value: c.trans, note: 'Kosongkan = baseline tanpa perubahan income.' },
@@ -462,7 +496,7 @@ function careerEdit(el, S) {
       { k: 'thr', label: 'THR / tahun (IDR, di siklus Lebaran)', type: 'money', value: c.thr || '' },
       { k: 'cost', label: 'Biaya ekstra / bulan — mis. UKT (IDR)', type: 'money', value: c.cost || '' },
       { k: 'note', label: 'Catatan', type: 'text', value: c.note }],
-    onSave: (v) => { M.saveCareerCase(st.career, { title: v.title, trans: v.trans || '', income: Number(v.income) || 0, growth: Number(v.growth) || 0, thr: Number(v.thr) || 0, cost: Number(v.cost) || 0, note: v.note }); toast('Kasus diperbarui ✓'); render(el, S); } });
+    onSave: (v) => { M.saveCareerCase(id, { title: v.title, trans: v.trans || '', income: Number(v.income) || 0, growth: Number(v.growth) || 0, thr: Number(v.thr) || 0, cost: Number(v.cost) || 0, note: v.note }); toast('Kasus diperbarui ✓'); render(el, S); } });
 }
 function saveInit(c) {
   M.accounts().forEach((a) => {

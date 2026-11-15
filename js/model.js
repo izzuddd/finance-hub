@@ -719,6 +719,28 @@ export const careerCase = (id) => careerCases().find((c) => c.id === id) || null
 export function saveCareerCase(id, patch) {
   db.setSetting('careerCases', careerCases().map((c) => (c.id === id ? { ...c, ...patch } : c)));
 }
+/** A career case's income for one specific cycle (yearly raise compounded from the transition year; THR only in the Lebaran cycle).
+ *  Returns null when the case has no transition month or the cycle is before it (so it doesn't touch current real cycles). */
+export function careerIncomeFor(id, cycle) {
+  const c = careerCase(id);
+  if (!c || !c.trans || cycle < c.trans) return null;
+  const g = Math.pow(1 + (Number(c.growth) || 0) / 100, Math.max(0, Number(cycle.slice(0, 4)) - Number(c.trans.slice(0, 4))));
+  const income = Math.round((Number(c.income) || 0) * g);
+  const thr = lebaranCycle(Number(cycle.slice(0, 4))) === cycle ? Math.round((Number(c.thr) || 0) * g) : 0;
+  return { id, title: c.title, trans: c.trans, income, thr, cost: Math.round(Number(c.cost) || 0), growth: Number(c.growth) || 0, total: income + thr };
+}
+/** Write a career case's income into a cycle's Pemasukan (replacing its income lines). Returns the applied figures, or null if the case doesn't apply to this cycle. */
+export function applyCareerIncome(id, cycle) {
+  const ci = careerIncomeFor(id, cycle);
+  if (!ci) return null;
+  incomeLines(cycle).forEach((i) => db.del('income', i.id));
+  const lines = [{ leg: 'mid', label: 'Gaji — ' + ci.title, amount: ci.income }];
+  if (ci.thr) lines.push({ leg: 'thr', label: 'THR — ' + ci.title, amount: ci.thr });
+  db.putMany('income', lines.map((l, idx) => ({ id: 'inc-' + cycle + '-sc' + idx, cycle, leg: l.leg, label: l.label, amount: l.amount, source: 'scenario', career: id })));
+  return ci;
+}
+/** True when this cycle's Pemasukan is currently a career-scenario override. */
+export const incomeIsScenario = (cycle) => incomeLines(cycle).some((i) => i.source === 'scenario');
 
 /** Budget → Proyeksi cashflow: the base cash flow plus what the room project takes (stage 1 own money, loan repayments). */
 export function cashflowProjection(scenarioId, { from = currentCycle(), to = '2030-12', career = null } = {}) {
