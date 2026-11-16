@@ -39,22 +39,23 @@ export function render(el, S) {
 function pocketsView() {
   const P = M.pockets();
   const g = M.gold(), tn = M.installments('Tanah');
+  const realBal = (pp) => Number(pp.calOri) || pp.actual; // saldo dikalibrasi (dicek) kalau ada, else tercatat
   const talOutstanding = sum(M.talanganOpen(), (t) => t.sisa); // sisa talangan yang masih dipakai (belum balik ke kantong)
-  const totalActual = sum(P, (p) => p.actual);
+  const totalReal = sum(P, (p) => realBal(p));
   const totOri = sum(P, (p) => p.ori), totBorrowed = sum(P, (p) => p.borrowed);
   let h = tiles([
-    tile('Total kantong', fmtIDR(totalActual), `<div class="m">uang di kantong sekarang</div>`),
-    tile('Total + talangan', fmtIDR(totalActual + talOutstanding), `<div class="m">+ sisa talangan ${fmtIDR(talOutstanding)}</div>`),
+    tile('Total kantong', fmtIDR(totalReal), `<div class="m">saldo riil (dikalibrasi)</div>`),
+    tile('Total + talangan', fmtIDR(totalReal + talOutstanding), `<div class="m">+ sisa talangan ${fmtIDR(talOutstanding)}</div>`),
     tile('Aset inti', fmtIDR(g.net + tn.paid), `<div class="m">emas + tanah</div>`),
   ]);
-  h += `<div class="note">Dari total <b>${fmtIDR(totalActual)}</b>: <b>saldo asli ${fmtIDR(totOri)}</b> + cicilan talangan yang parkir <b>${fmtIDR(totBorrowed)}</b>. Talangan masih di luar (belum balik ke kantong): <b>${fmtIDR(talOutstanding)}</b> → nilai penuh <b>${fmtIDR(totalActual + talOutstanding)}</b>.</div>`;
+  h += `<div class="note">Dari total <b>${fmtIDR(totalReal)}</b>: <b>saldo asli ${fmtIDR(totOri)}</b> + cicilan talangan yang parkir <b>${fmtIDR(totBorrowed)}</b>. Talangan masih di luar: <b>${fmtIDR(talOutstanding)}</b> → nilai penuh <b>${fmtIDR(totalReal + talOutstanding)}</b>.</div>`;
   h += `<div class="flex2"><button class="btn" id="moDep">✓ Setoran bulanan sekaligus</button><button class="btn ghost" id="addLog">+ Catat manual</button></div>`;
   h += card('Kantong — ketuk untuk rincian', P.map((p) => {
     const open = st.open === p.name, isEF = /emergency/i.test(p.name);
     const sisaOut = sum(p.talangan, (t) => Number(t.sisa) || 0); // talangan kantong ini yang masih di luar
     const right = sisaOut ? `talangan di luar ${fmtIDR(sisaOut)}` : (p.goal ? 'goal ' + fmtIDR(p.goal) : 'target ' + currentCycle().slice(0, 4) + ': ' + fmtIDR(p.targetYear));
     let x = `<div class="comp${open ? ' open' : ''}"><div data-pocket="${esc(p.name)}" role="button" tabindex="0">
-      <div class="row1"><span>${esc(p.name)}${p.talangan.length ? ` <span class="badge w">${p.talangan.length} talangan</span>` : ''}</span><span>${fmtIDR(p.actual)}</span></div>
+      <div class="row1"><span>${esc(p.name)}${Number(p.calOri) ? ' <span class="badge g">dicek</span>' : ''}${p.talangan.length ? ` <span class="badge w">${p.talangan.length} talangan</span>` : ''}</span><span>${fmtIDR(realBal(p))}</span></div>
       <div class="row2"><span>asli <b>${fmtIDR(p.ori)}</b>${p.borrowed ? ' · talangan parkir ' + fmtIDR(p.borrowed) : ''}</span><span>${right}</span></div>
       ${bar(p.goal ? p.ori : p.actual, p.goal || p.targetYear)}</div>`;
     if (open) {
