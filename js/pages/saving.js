@@ -1,19 +1,28 @@
 // Tabungan: pockets (+ saving log), talangan, core assets (gold/SDB/tanah), loans.
 import * as db from '../db.js';
 import * as M from '../model.js';
-import { esc, fmtIDR, fmtTL, parseAmount, todayStr, currentCycle, cycleLabel, cycleOf, addMonths, uid, sum, pct, MONTHS } from '../util.js';
+import { esc, fmtIDR, fmtTL, fmtShort, parseAmount, todayStr, currentCycle, cycleLabel, cycleOf, addMonths, uid, sum, pct, groupBy, MONTHS } from '../util.js';
 import { $, toast, openModal, closeModal, tile, tiles, card, row, seg, bindSeg, bar, collapsible, moneyCls, empty } from '../ui.js';
 
-const st = { sub: 'pockets', open: null, logAll: false, logPocket: '', sec: {}, moCycle: null };
+const st = { sub: 'pockets', open: null, logAll: false, logPocket: '', sec: {}, moCycle: null, sc: null, career: '2a' };
 
 export function render(el, S) {
-  if (!['pockets', 'talangan', 'assets'].includes(st.sub)) st.sub = 'pockets';
-  let h = seg('sSeg', [['pockets', 'Kantong'], ['talangan', 'Talangan'], ['assets', 'Aset']], st.sub);
+  // shortcut dari Budget → Proyeksi membuka tab Proyeksi di sini
+  try { const hint = localStorage.getItem('hub.savingSub'); if (hint) { localStorage.removeItem('hub.savingSub'); if (['pockets', 'talangan', 'proyeksi', 'assets'].includes(hint)) st.sub = hint; } } catch (e) {}
+  if (!['pockets', 'talangan', 'proyeksi', 'assets'].includes(st.sub)) st.sub = 'pockets';
+  let h = seg('sSeg', [['pockets', 'Kantong'], ['talangan', 'Talangan'], ['proyeksi', 'Proyeksi'], ['assets', 'Aset']], st.sub);
   if (st.sub === 'pockets') h += pocketsView();
   if (st.sub === 'talangan') h += talanganView();
+  if (st.sub === 'proyeksi') h += savingProjectionView();
   if (st.sub === 'assets') h += assetsView();
   el.innerHTML = h;
   bindSeg(el, 'sSeg', (k) => { st.sub = k; render(el, S); });
+  if (st.sub === 'proyeksi') {
+    el.querySelectorAll('[data-cfsc]').forEach((b) => b.addEventListener('click', () => { st.sc = b.dataset.cfsc; render(el, S); }));
+    el.querySelectorAll('[data-cfcareer]').forEach((b) => b.addEventListener('click', () => { st.career = b.dataset.cfcareer; render(el, S); }));
+    { const ce = $('cfCareerEdit'); if (ce) ce.onclick = () => careerEditS(el, S); }
+    el.querySelectorAll('[data-cfm]').forEach((n) => n.addEventListener('click', () => savingMonthDetail(n.dataset.cfm)));
+  }
   const on = (sel, fn) => el.querySelectorAll(sel).forEach((n) => n.addEventListener('click', (e) => { e.stopPropagation(); fn(n.dataset, n); }));
   on('[data-pocket]', (d) => { st.open = st.open === d.pocket ? null : d.pocket; render(el, S); });
   on('[data-cal]', (d) => calibrate(d.cal));
@@ -354,3 +363,47 @@ function editInstallment(id) {
 }
 
 // (Pinjaman & piutang dipindah ke menu Kredit → tab Pinjaman — lihat pages/kredit.js)
+
+// ------------------------------------------------------------------ proyeksi tabungan (kasus karir + Needs/Wants/Giving per bulan)
+function savingProjectionView() {
+  const scs = db.all('scenarios').filter((s) => Number(s.active) !== 0);
+  st.sc = st.sc && db.get('scenarios', st.sc) ? st.sc : scs[0]?.id;
+  const careers = M.careerCases();
+  st.career = careers.some((c) => c.id === st.career) ? st.career : '2a';
+  const career = careers.find((c) => c.id === st.career);
+  const rows = M.cashflowProjection(st.sc, { career }).rows;
+  let h = card('Kasus roadmap karir', `<div class="chips" style="margin:0 0 8px">${careers.map((c) => `<button data-cfcareer="${c.id}" class="${c.id === st.career ? 'active' : ''}">${esc(c.id === 'turki' ? 'Turki' : c.id.toUpperCase())}</button>`).join('')}</div>`
+    + `<div class="note" style="margin:0"><b>${esc(career.title)}</b>${career.trans ? ` · mulai ${cycleLabel(career.trans, true)} · income ${fmtShort(career.income)}/bln${career.growth ? ' (+' + career.growth + '%/th)' : ''}${career.thr ? ' + THR ' + fmtShort(career.thr) : ''}${career.cost ? ' · biaya ' + fmtShort(career.cost) + '/bln' : ''}` : ''} <button class="refresh" id="cfCareerEdit">ubah angka</button><br>${esc(career.note)}</div>`);
+  h += scs.length > 1 ? `<div class="chips">${scs.map((s) => `<button data-cfsc="${s.id}" class="${s.id === st.sc ? 'active' : ''}">Kamar: ${esc(s.name)}</button>`).join('')}</div>` : '';
+  const years = groupBy(rows, (r) => r.month.slice(0, 4));
+  for (const [y, rs] of Object.entries(years)) {
+    const body = `<div class="tbl"><div class="th"><span>Bln</span><span>Masuk</span><span>Needs</span><span>Wants</span><span>Giving</span><span>Sisa</span></div>` +
+      rs.map((r) => `<div class="tr" data-cfm="${r.month}" role="button"><span>${cycleLabel(r.month)}${r.projected ? ' ≈' : ''}</span><span>${fmtShort(r.income)}</span><span>${fmtShort(r.needs)}</span><span>${fmtShort(r.wants)}</span><span>${fmtShort(r.giving)}</span><span class="${moneyCls(r.net)}">${fmtShort(r.net)}</span></div>`).join('') + '</div>';
+    h += collapsible('sp' + y, `<div class="nm">${y}<span class="amt">sisa ${fmtShort(sum(rs, (r) => r.net))}</span></div><div class="pct">${rs.filter((r) => r.net < -1000).length ? rs.filter((r) => r.net < -1000).length + ' bln minus' : ''}</div>`, body, st.sec['sp' + y] ?? y === currentCycle().slice(0, 4));
+  }
+  h += '<div class="note">Pilih kasus karir di atas → tabel per bulan ngikut income kasus itu. Needs/Wants/Giving dari budget (atau perkiraan pola 2026 kalau belum ada, ditandai ≈). Ketuk baris bulan buat rincian & lompat ke bulan itu; tiap tahun bisa dilipat.</div>';
+  return h;
+}
+function savingMonthDetail(m) {
+  const r = M.cashflowProjection(st.sc, { career: M.careerCase(st.career) }).rows.find((x) => x.month === m);
+  if (!r) return;
+  const ln = (s, v, neg) => `<div class="row"><span>${s}</span><span class="${neg ? 'neg' : ''}">${neg ? '−' : ''}${fmtIDR(v)}</span></div>`;
+  openModal({ title: 'Proyeksi ' + cycleLabel(m, true), sub: r.projected ? 'Budget = perkiraan dari pola 2026' : 'Budget siklus ini',
+    fields: [{ k: 'i', type: 'info', value: `<div class="alloc">${ln('Pemasukan' + (r.incomeProjected ? ' (perkiraan)' : ''), r.income)}${r.thr ? ln('· termasuk THR', r.thr) : ''}${r.leaveCut ? ln('· sudah dipotong cuti ke Indonesia', r.leaveCut, true) : ''}
+      ${ln('Needs', r.needs, true)}${ln('Wants', r.wants, true)}${ln('Giving', r.giving, true)}${ln('Saving', r.saving, true)}
+      ${r.talItems.map((x) => ln('Talangan ' + esc(x.item), x.amount, true)).join('')}${r.careerCost ? ln('Biaya kuliah (kasus ' + esc(r.careerCase || '') + ')', r.careerCost, true) : ''}<div class="sep"></div>${ln('<b>Sisa setelah budget</b>', r.net)}</div>` }] });
+}
+function careerEditS(el, S) {
+  const id = st.career, c = M.careerCase(id);
+  if (!c) return;
+  openModal({ title: 'Kasus ' + (id === 'turki' ? 'Turki' : id.toUpperCase()), sub: 'Angka ini asumsi — sesuaikan dengan kondisi nyata.',
+    fields: [
+      { k: 'title', label: 'Nama kasus', type: 'text', value: c.title },
+      { k: 'trans', label: 'Mulai berlaku (siklus)', type: 'month', value: c.trans, note: 'Kosongkan = baseline tanpa perubahan income.' },
+      { k: 'income', label: 'Pemasukan / bulan (IDR)', type: 'money', value: c.income || '' },
+      { k: 'growth', label: 'Kenaikan gaji / tahun (%)', type: 'number', value: c.growth ?? '', note: 'Naik tiap Januari. Gaji pokok TAID ±6,5%; beasiswa biasanya 0.' },
+      { k: 'thr', label: 'THR / tahun (IDR, di siklus Lebaran)', type: 'money', value: c.thr || '' },
+      { k: 'cost', label: 'Biaya ekstra / bulan — mis. UKT (IDR)', type: 'money', value: c.cost || '' },
+      { k: 'note', label: 'Catatan', type: 'text', value: c.note }],
+    onSave: (v) => { M.saveCareerCase(id, { title: v.title, trans: v.trans || '', income: Number(v.income) || 0, growth: Number(v.growth) || 0, thr: Number(v.thr) || 0, cost: Number(v.cost) || 0, note: v.note }); toast('Kasus diperbarui ✓'); render(el, S); } });
+}
