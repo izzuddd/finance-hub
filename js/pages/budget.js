@@ -369,7 +369,7 @@ function tlPlan(c) {
       <div><label>Transfer ke AKBANK (Rp)</label><input id="tlIdr" inputmode="decimal" value="${defIdr}"></div></div>
     <div class="btotal"><span>Kurs efektif</span><span id="tlEff"></span></div>
     <div id="tlOut"></div>
-    <div class="note">Budget TL siklus ini <b>${fmtTL(budgetTL)}</b> (kurs siklus ₺1 = Rp ${rate ? rate.toLocaleString('id-ID') : '–'}). Ubah Total TL atau jumlah transfer — kurs efektif menyesuaikan. <b>Pakai kurs</b> mengubah kurs siklus, jadi semua pos TL di budget dinilai ulang.</div>
+    <div class="note">Budget TL siklus ini <b>${fmtTL(budgetTL)}</b> (kurs siklus ₺1 = Rp ${rate ? rate.toLocaleString('id-ID') : '–'}). Ubah Total TL atau jumlah transfer — kurs efektif menyesuaikan. <b>Pakai kurs</b> menilai ulang semua pos TL di budget dengan kurs baru, tapi <b>total rupiah siklus dijaga tetap</b> — selisihnya masuk ke baris <b>${esc(M.TL_BUFFER_LABEL)}</b> di Needs › ${esc(M.TL_BUFFER_GROUP)} (minus = lebih mahal dari perkiraan awal, plus = lebih hemat).</div>
     <button class="btn" id="tlApplyRate">Pakai kurs efektif untuk ${cycleLabel(c, true)}</button>`);
 }
 function bindTlPlan(c, el, S) {
@@ -390,7 +390,9 @@ function bindTlPlan(c, el, S) {
   if (btn) btn.onclick = () => {
     const e = Math.round(eff());
     if (!e) return toast('Isi Total TL & jumlah transfer');
-    M.setRate(c, e); toast('Kurs siklus → ₺1 = Rp ' + e.toLocaleString('id-ID') + ' ✓'); render(el, S);
+    const r = M.applyTLRate(c, e);
+    const msg = 'Kurs → ₺1 = Rp ' + e.toLocaleString('id-ID') + (r.delta ? ' · Buffer ' + fmtIDR(r.buffer) + ' (total dijaga tetap)' : '') + ' ✓';
+    toast(msg); render(el, S);
   };
 }
 

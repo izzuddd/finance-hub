@@ -32,6 +32,26 @@ function rateFor_(cycle) {
 }
 export const hasOwnRate = (cycle) => !!db.all('rates').find((r) => r.cycle === cycle && Number(r.rate) > 0);
 export function setRate(cycle, rate) { db.put('rates', { id: cycle, cycle, rate: Number(rate) || 0 }); }
+export const TL_BUFFER_LABEL = 'Buffer kurs TL';
+export const TL_BUFFER_GROUP = 'Others';
+/** Apply an effective TL→IDR rate to a cycle: revalue every TL budget line at the new rate (idr = tl × rate),
+ *  while keeping the cycle's TOTAL rupiah budget unchanged by parking the difference in a Needs/Others
+ *  "Buffer kurs TL" line. Returns the figures so the caller can report them. */
+export function applyTLRate(cycle, rate) {
+  const r = Number(rate) || 0;
+  const tlLines = budgetLines(cycle).filter((l) => Number(l.tl) > 0 && l.label !== TL_BUFFER_LABEL);
+  const oldSum = sum(tlLines, (l) => Number(l.idr) || 0);
+  setRate(cycle, r);
+  let newSum = 0;
+  tlLines.forEach((l) => { const idr = Math.round(Number(l.tl) * r); newSum += idr; if (idr !== Number(l.idr)) db.put('budget', { ...l, idr }); });
+  const delta = newSum - oldSum; // extra rupiah the TL lines now cost (negative if cheaper)
+  const bufId = 'b-' + cycle + '-tlbuffer';
+  const ex = db.get('budget', bufId) || budgetLines(cycle).find((l) => l.panel === 'NEEDS' && (l.grp || '') === TL_BUFFER_GROUP && l.label === TL_BUFFER_LABEL);
+  const bufNew = (ex ? Number(ex.idr) || 0 : 0) - delta; // preserve total: buffer absorbs the opposite of the change
+  if (Math.abs(bufNew) < 1000) { if (ex) db.del('budget', ex.id); }
+  else db.put('budget', { id: ex?.id || bufId, cycle, panel: 'NEEDS', grp: TL_BUFFER_GROUP, label: TL_BUFFER_LABEL, idr: bufNew, tl: 0, paid: 0, timing: ex?.timing || '', payfrom: ex?.payfrom || '', order: ex?.order ?? 900 });
+  return { oldSum, newSum, delta, buffer: Math.abs(bufNew) < 1000 ? 0 : bufNew, rate: r };
+}
 /** IDR value of a transaction: TRY accounts × the cycle rate (like the sheet's column G). */
 export function txIDR(t) {
   if (t.idr !== '' && t.idr != null && !isNaN(Number(t.idr))) return Number(t.idr); // manual IDR override (per-row rate)
