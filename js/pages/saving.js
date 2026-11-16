@@ -39,7 +39,13 @@ export function render(el, S) {
 function pocketsView() {
   const P = M.pockets();
   const g = M.gold(), tn = M.installments('Tanah');
-  let h = tiles([tile('Total kantong', fmtIDR(sum(P, (p) => p.actual))), tile('Aset inti', fmtIDR(g.net + tn.paid), `<div class="m">emas bersih + tanah</div>`)], 'two');
+  const talOutstanding = sum(M.talanganOpen(), (t) => t.sisa); // sisa talangan yang masih dipakai (belum balik ke kantong)
+  const totalActual = sum(P, (p) => p.actual);
+  let h = tiles([
+    tile('Total kantong', fmtIDR(totalActual), `<div class="m">uang di kantong sekarang</div>`),
+    tile('Total + talangan', fmtIDR(totalActual + talOutstanding), `<div class="m">+ sisa talangan ${fmtIDR(talOutstanding)}</div>`),
+    tile('Aset inti', fmtIDR(g.net + tn.paid), `<div class="m">emas + tanah</div>`),
+  ]);
   h += `<div class="flex2"><button class="btn" id="moDep">✓ Setoran bulanan sekaligus</button><button class="btn ghost" id="addLog">+ Catat manual</button></div>`;
   h += card('Kantong — ketuk untuk rincian', P.map((p) => {
     const open = st.open === p.name, isEF = /emergency/i.test(p.name);
