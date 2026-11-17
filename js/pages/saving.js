@@ -386,11 +386,37 @@ function savingProjectionView() {
 function savingMonthDetail(m) {
   const r = M.cashflowProjection(st.sc, { career: M.careerCase(st.career) }).rows.find((x) => x.month === m);
   if (!r) return;
-  const ln = (s, v, neg) => `<div class="row"><span>${s}</span><span class="${neg ? 'neg' : ''}">${neg ? '−' : ''}${fmtIDR(v)}</span></div>`;
+  const ln = (s, v, neg, cls) => `<div class="row"><span>${s}</span><span class="${cls || (neg ? 'neg' : '')}">${neg ? '−' : ''}${fmtIDR(v)}</span></div>`;
+  const grpHd = (g) => `<div class="row"><span style="opacity:.55;font-size:12px;letter-spacing:.02em">${esc(g)}</span><span></span></div>`;
+  // breakdown per-line sebuah panel (Needs/Wants/Giving), dikelompokkan per grup — hanya kalau budget nyata ada
+  const panelBreak = (panel) => {
+    const lines = M.panelLines(m, panel).filter((l) => Number(l.idr));
+    if (!lines.length) return `<div class="note" style="margin:4px 2px">Belum ada rincian${r.projected ? ' (perkiraan pola 2026)' : ''}.</div>`;
+    const gs = groupBy(lines, (l) => l.grp || 'Lainnya');
+    return Object.entries(gs).map(([g, ls]) => grpHd(g) + ls.map((l) => ln('↳ ' + esc(l.label), Number(l.idr), true)).join('')).join('');
+  };
+  // rincian saving per kantong — Kamar dikecualikan (ada di menu Rencana)
+  const sb = M.savingBudget(m).filter((s) => s.name !== M.KAMAR_POCKET && Number(s.value) > 0);
+  const savingBreak = sb.length
+    ? sb.map((s) => ln('↳ ' + esc(s.name), Number(s.value), true)).join('')
+    : `<div class="note" style="margin:4px 2px">Belum ada target kantong bulan ini${r.projected ? ' (perkiraan pola 2026)' : ''}.</div>`;
+  const talBreak = (r.talItems && r.talItems.length)
+    ? r.talItems.map((x) => ln('↳ ' + esc(x.item), Number(x.amount), true)).join('')
+    : `<div class="note" style="margin:4px 2px">Tidak ada cicilan talangan bulan ini.</div>`;
+  const cHd = (nm, amt) => `<div class="nm">${nm}<span class="amt">${fmtIDR(amt)}</span></div><div class="pct"></div>`;
+  const summary = `<div class="alloc">${ln('Pemasukan' + (r.incomeProjected ? ' (perkiraan)' : ''), r.income)}${r.thr ? ln('· termasuk THR', r.thr) : ''}${r.leaveCut ? ln('· sudah dipotong cuti ke Indonesia', r.leaveCut, true) : ''}
+    <div class="sep"></div>${ln('Needs', r.needs, true)}${ln('Wants', r.wants, true)}${ln('Giving', r.giving, true)}${ln('Saving (kantong)', r.saving, true)}${r.talangan ? ln('Talangan', r.talangan, true) : ''}${r.careerCost ? ln('Biaya kuliah (' + esc((r.careerCase || '').toUpperCase()) + ')', r.careerCost, true) : ''}<div class="sep"></div>${ln('<b>Sisa setelah budget</b>', r.net, false, moneyCls(r.net))}</div>`;
+  const body = summary
+    + `<div class="note" style="margin:8px 2px 2px">Ketuk tiap bagian buat rincian:</div>`
+    + collapsible('smd-needs', cHd('Rincian Needs', r.needs), `<div class="alloc">${panelBreak('NEEDS')}</div>`, false)
+    + collapsible('smd-wants', cHd('Rincian Wants', r.wants), `<div class="alloc">${panelBreak('WANTS')}</div>`, false)
+    + collapsible('smd-giving', cHd('Rincian Giving', r.giving), `<div class="alloc">${panelBreak('GIVING')}</div>`, false)
+    + collapsible('smd-save', cHd('Rincian Saving', r.saving), `<div class="alloc">${savingBreak}</div>`, true)
+    + collapsible('smd-tal', cHd('Rincian Talangan', r.talangan || 0), `<div class="alloc">${talBreak}</div>`, false);
   openModal({ title: 'Proyeksi ' + cycleLabel(m, true), sub: r.projected ? 'Budget = perkiraan dari pola 2026' : 'Budget siklus ini',
-    fields: [{ k: 'i', type: 'info', value: `<div class="alloc">${ln('Pemasukan' + (r.incomeProjected ? ' (perkiraan)' : ''), r.income)}${r.thr ? ln('· termasuk THR', r.thr) : ''}${r.leaveCut ? ln('· sudah dipotong cuti ke Indonesia', r.leaveCut, true) : ''}
-      ${ln('Needs', r.needs, true)}${ln('Wants', r.wants, true)}${ln('Giving', r.giving, true)}${ln('Saving', r.saving, true)}
-      ${r.talItems.map((x) => ln('Talangan ' + esc(x.item), x.amount, true)).join('')}${r.careerCost ? ln('Biaya kuliah (kasus ' + esc(r.careerCase || '') + ')', r.careerCost, true) : ''}<div class="sep"></div>${ln('<b>Sisa setelah budget</b>', r.net)}</div>` }] });
+    fields: [{ k: 'i', type: 'info', value: body }] });
+  const mel = $('modal');
+  mel.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => n.parentElement.classList.toggle('open')));
 }
 function careerEditS(el, S) {
   const id = st.career, c = M.careerCase(id);
