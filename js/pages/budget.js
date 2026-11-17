@@ -30,7 +30,7 @@ export function render(el, S) {
   }
   if (st.sub === 'budget') h += budgetView(c);
   if (st.sub === 'gaji') h += incomeView(c);
-  if (st.sub === 'transfer') h += transferView(c) + tlPlan(c);
+  if (st.sub === 'transfer') h += transferView(c) + tlPlan(c) + tlCalibrate(c);
   el.innerHTML = h;
   bindTop(el, S);
   el.querySelectorAll('[data-toggle]').forEach((n) => n.addEventListener('click', () => {
@@ -65,6 +65,7 @@ export function render(el, S) {
   bind('simBtn', () => simulator(c));
   bind('classify', () => classify(c));
   if ($('tlTotal')) bindTlPlan(c, el, S);
+  if ($('tcIdr')) bindTlCalibrate(c, el, S);
   bind('saveInit', () => saveInit(c));
   bind('copyNext', () => { const n = addMonths(c, 1); const k = M.copyBudget(c, n, { overwrite: M.budgetLines(n).length > 0 && confirm('Timpa budget ' + cycleLabel(n, true) + '?') }); toast(k ? k + ' baris disalin ke ' + cycleLabel(n, true) + ' ✓' : 'Siklus berikutnya sudah punya budget'); });
   el.querySelectorAll('[data-use]').forEach((n) => n.addEventListener('click', () => { $('ib_' + n.dataset.use).value = n.dataset.v; }));
@@ -406,6 +407,52 @@ function bindTlPlan(c, el, S) {
     const r = M.applyTLRate(c, rate);
     toast('Pos TL disamakan ke ₺1 = Rp ' + rate.toLocaleString('id-ID') + (r.delta ? ' · Buffer ' + fmtIDR(r.buffer) : '') + ' ✓');
     render(el, S);
+  };
+}
+// Kalibrasi top-up TL: rate siklus menyesuaikan jumlah TL yang benar-benar di-top-up (IDR ÷ TL),
+// selisih dengan total pos TL di budget masuk baris "Backup TL" di Needs › Others.
+function tlCalibLeaves(c) { return tlLeaves(c).filter((l) => l.label !== M.TL_BUFFER_LABEL && l.label !== M.TL_BACKUP_LABEL); }
+function tlCalibrate(c) {
+  const leaves = tlCalibLeaves(c);
+  const budgetTL = sum(leaves, (l) => l.tl);
+  if (budgetTL <= 0) return '';
+  const saved = M.tlTopup(c) || {};
+  const rate = M.rateFor(c) || M.rateFor(addMonths(c, -1));
+  const idr0 = Math.round(Number(saved.idr) || Math.ceil(budgetTL * rate / 100000) * 100000);
+  const tl0 = Number(saved.tl) || Math.round(budgetTL);
+  const bk = M.budgetLines(c).find((l) => l.label === M.TL_BACKUP_LABEL);
+  return card('Kalibrasi top-up TL', `<div class="note">Isi rupiah & TL yang <b>benar-benar kamu top-up</b> bulan ini (mis. rencana awal ₺ ≠ total pos TL di budget). Kurs siklus di-set = <b>rupiah ÷ TL</b> (rate menyesuaikan top-up), semua pos TL dinilai ulang pakai kurs itu, dan selisihnya masuk baris <b>${esc(M.TL_BACKUP_LABEL)}</b> di Needs › ${esc(M.TL_BUFFER_GROUP)} — jadi seluruh rupiah top-up tetap kehitung di total budget. (Menggantikan ${esc(M.TL_BUFFER_LABEL)} kalau ada.)</div>
+    <div class="flex2">
+      <div><label>Rupiah di-top-up (Rp)</label><input id="tcIdr" inputmode="decimal" value="${idr0}"></div>
+      <div><label>TL diterima (₺)</label><input id="tcTl" inputmode="decimal" value="${tl0}"></div></div>
+    <div class="btotal"><span>Kurs hasil</span><span id="tcRate"></span></div>
+    <div id="tcOut"></div>
+    ${bk ? `<div class="note">Backup TL sekarang: <b>${fmtIDR(Number(bk.idr))}</b> (Needs › ${esc(M.TL_BUFFER_GROUP)}).</div>` : ''}
+    <button class="btn" id="tcApply">Kalibrasi — set kurs & backup TL untuk ${cycleLabel(c, true)}</button>`);
+}
+function bindTlCalibrate(c, el, S) {
+  const budgetTL = sum(tlCalibLeaves(c), (l) => l.tl);
+  const upd = () => {
+    const idr = parseAmount($('tcIdr').value), tl = parseAmount($('tcTl').value);
+    const r = tl > 0 ? idr / tl : 0;
+    const newSum = Math.round(budgetTL * r);
+    const backup = Math.round(idr - newSum);
+    const bkShown = Math.abs(backup) < 1000 ? 0 : backup;
+    $('tcRate').innerHTML = r ? `<b>₺1 = Rp ${(Math.round(r * 100) / 100).toLocaleString('id-ID')}</b>` : '–';
+    $('tcOut').innerHTML = row('Nilai pos TL (' + fmtTL(budgetTL) + ')', 'dengan kurs hasil', fmtIDR(newSum))
+      + row(esc(M.TL_BACKUP_LABEL) + ' → Needs › ' + M.TL_BUFFER_GROUP, bkShown > 0 ? 'sisa top-up belum masuk pos' : bkShown < 0 ? 'top-up kurang dari pos TL' : '—', `<span class="${bkShown ? (bkShown < 0 ? 'neg' : 'pos') : ''}">${fmtIDR(bkShown)}</span>`)
+      + row('Total top-up masuk budget', '', '<b>' + fmtIDR(newSum + bkShown) + '</b>');
+  };
+  ['tcIdr', 'tcTl'].forEach((id) => $(id) && $(id).addEventListener('input', upd));
+  upd();
+  const btn = $('tcApply');
+  if (btn) btn.onclick = () => {
+    const idr = parseAmount($('tcIdr').value), tl = parseAmount($('tcTl').value);
+    try {
+      const r = M.calibrateTL(c, idr, tl);
+      toast('Kalibrasi ✓ Kurs ₺1 = Rp ' + (Math.round(r.rate * 100) / 100).toLocaleString('id-ID') + (r.backup ? ' · ' + M.TL_BACKUP_LABEL + ' ' + fmtIDR(r.backup) : ''));
+      render(el, S);
+    } catch (e) { toast(e.message || 'Gagal kalibrasi', 3000); }
   };
 }
 

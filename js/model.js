@@ -33,13 +33,18 @@ function rateFor_(cycle) {
 export const hasOwnRate = (cycle) => !!db.all('rates').find((r) => r.cycle === cycle && Number(r.rate) > 0);
 export function setRate(cycle, rate) { db.put('rates', { id: cycle, cycle, rate: Number(rate) || 0 }); }
 export const TL_BUFFER_LABEL = 'Buffer kurs TL';
+export const TL_BACKUP_LABEL = 'Backup TL';
 export const TL_BUFFER_GROUP = 'Others';
+const isReconLine = (l) => l.label === TL_BUFFER_LABEL || l.label === TL_BACKUP_LABEL;
 /** Apply an effective TL→IDR rate to a cycle: revalue every TL budget line at the new rate (idr = tl × rate),
  *  while keeping the cycle's TOTAL rupiah budget unchanged by parking the difference in a Needs/Others
  *  "Buffer kurs TL" line. Returns the figures so the caller can report them. */
 export function applyTLRate(cycle, rate) {
   const r = Number(rate) || 0;
-  const tlLines = budgetLines(cycle).filter((l) => Number(l.tl) > 0 && l.label !== TL_BUFFER_LABEL);
+  // kalibrasi top-up & buffer kurs saling menggantikan → buang baris Backup TL kalau ada
+  const bk = budgetLines(cycle).find((l) => l.label === TL_BACKUP_LABEL);
+  if (bk) db.del('budget', bk.id);
+  const tlLines = budgetLines(cycle).filter((l) => Number(l.tl) > 0 && !isReconLine(l));
   const oldSum = sum(tlLines, (l) => Number(l.idr) || 0);
   setRate(cycle, r);
   let newSum = 0;
@@ -52,6 +57,31 @@ export function applyTLRate(cycle, rate) {
   else db.put('budget', { id: ex?.id || bufId, cycle, panel: 'NEEDS', grp: TL_BUFFER_GROUP, label: TL_BUFFER_LABEL, idr: bufNew, tl: 0, paid: 0, timing: ex?.timing || '', payfrom: ex?.payfrom || '', order: ex?.order ?? 900 });
   return { oldSum, newSum, delta, buffer: Math.abs(bufNew) < 1000 ? 0 : bufNew, rate: r };
 }
+/** Kalibrasi top-up TL: input rupiah & TL yang BENAR-BENAR di-top-up bulan itu. Kurs siklus = rupiah ÷ TL
+ *  (rate menyesuaikan top-up nyata). Semua pos TL dinilai ulang dengan kurs ini; selisih antara total top-up
+ *  dan nilai pos TL diparkir di baris "Backup TL" (Needs/Others), supaya SELURUH rupiah top-up ikut terhitung
+ *  di total budget. Menggantikan baris Buffer kurs TL bila ada. */
+export function calibrateTL(cycle, topupIDR, topupTL) {
+  const idr = Math.round(Number(topupIDR) || 0);
+  const tl = Number(topupTL) || 0;
+  const rate = tl > 0 ? idr / tl : 0;
+  if (!(rate > 0)) throw new Error('Isi rupiah & TL top-up yang benar');
+  setRate(cycle, rate);
+  const tlLines = budgetLines(cycle).filter((l) => Number(l.tl) > 0 && !isReconLine(l));
+  let newSum = 0;
+  tlLines.forEach((l) => { const v = Math.round(Number(l.tl) * rate); newSum += v; if (v !== Number(l.idr)) db.put('budget', { ...l, idr: v }); });
+  // kalibrasi menggantikan buffer kurs — buang baris Buffer kurs TL lama bila ada
+  const buf = budgetLines(cycle).find((l) => l.label === TL_BUFFER_LABEL);
+  if (buf) db.del('budget', buf.id);
+  const backup = Math.round(idr - newSum); // sisa top-up yang belum masuk pos TL → Backup TL
+  const bkId = 'b-' + cycle + '-tlbackup';
+  const ex = db.get('budget', bkId) || budgetLines(cycle).find((l) => l.panel === 'NEEDS' && (l.grp || '') === TL_BUFFER_GROUP && l.label === TL_BACKUP_LABEL);
+  if (Math.abs(backup) < 1000) { if (ex) db.del('budget', ex.id); }
+  else db.put('budget', { id: ex?.id || bkId, cycle, panel: 'NEEDS', grp: TL_BUFFER_GROUP, label: TL_BACKUP_LABEL, idr: backup, tl: 0, paid: 0, timing: ex?.timing || '', payfrom: ex?.payfrom || '', order: ex?.order ?? 901 });
+  db.setSetting('tlTopup|' + cycle, { idr, tl });
+  return { rate, newSum, backup: Math.abs(backup) < 1000 ? 0 : backup, idr, tl, budgetTL: sum(tlLines, (l) => Number(l.tl)) };
+}
+export const tlTopup = (cycle) => db.setting('tlTopup|' + cycle, null);
 /** IDR value of a transaction: TRY accounts × the cycle rate (like the sheet's column G). */
 export function txIDR(t) {
   if (t.idr !== '' && t.idr != null && !isNaN(Number(t.idr))) return Number(t.idr); // manual IDR override (per-row rate)
