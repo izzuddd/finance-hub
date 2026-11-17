@@ -362,6 +362,10 @@ function tlPlan(c) {
   if (budgetTL <= 0) return '';
   const rate = M.rateFor(c) || M.rateFor(addMonths(c, -1));
   const defIdr = Math.ceil(budgetTL * rate / 100000) * 100000; // default transfer: budget TL × kurs, dibulatkan 100rb
+  // kurs yang "terkandung" di pos TL sekarang (rupiah ÷ TL, tanpa baris buffer) — kalau beda dari kurs siklus, pos TL belum disinkron
+  const sumIdrLines = sum(leaves.filter((l) => l.label !== M.TL_BUFFER_LABEL), (l) => Number(l.idr) || 0);
+  const impliedRate = budgetTL > 0 ? sumIdrLines / budgetTL : 0;
+  const drift = rate && impliedRate && Math.abs(impliedRate - rate) >= 0.3;
   // editable: ganti Total TL atau jumlah transfer → kurs efektif (= transfer ÷ TL) ikut menyesuaikan live
   return card('Rencana top-up TL', `<div class="flex2">
       <div><label>Total TL (₺)</label><input id="tlTotal" inputmode="decimal" value="${budgetTL}"></div>
@@ -369,7 +373,9 @@ function tlPlan(c) {
     <div class="btotal"><span>Kurs efektif</span><span id="tlEff"></span></div>
     <div id="tlOut"></div>
     <div class="note">Budget TL siklus ini <b>${fmtTL(budgetTL)}</b> (kurs siklus ₺1 = Rp ${rate ? rate.toLocaleString('id-ID') : '–'}). Ubah Total TL atau jumlah transfer — kurs efektif menyesuaikan. <b>Pakai kurs</b> menilai ulang semua pos TL di budget dengan kurs baru, tapi <b>total rupiah siklus dijaga tetap</b> — selisihnya masuk ke baris <b>${esc(M.TL_BUFFER_LABEL)}</b> di Needs › ${esc(M.TL_BUFFER_GROUP)} (minus = lebih mahal dari perkiraan awal, plus = lebih hemat).</div>
-    <button class="btn" id="tlApplyRate">Pakai kurs efektif untuk ${cycleLabel(c, true)}</button>`);
+    ${drift ? `<div class="note warn" style="border-left:3px solid var(--neg,#e5534b);padding-left:8px"><b>Pos TL belum sinkron ke kurs siklus.</b> Sekarang pos TL rata-rata pakai ₺1 = Rp ${impliedRate.toFixed(2)}, padahal kurs siklus (dari Catat) ₺1 = Rp ${rate.toLocaleString('id-ID')}. Ketuk untuk menilai ulang semua pos TL ke kurs siklus (total siklus tetap dijaga lewat ${esc(M.TL_BUFFER_LABEL)}).</div>
+    <button class="btn" id="tlSyncSiklus">Samakan pos TL ke kurs siklus (₺1 = Rp ${rate.toLocaleString('id-ID')})</button>` : ''}
+    <button class="btn ghost" id="tlApplyRate">Pakai kurs efektif (dari transfer) untuk ${cycleLabel(c, true)}</button>`);
 }
 function bindTlPlan(c, el, S) {
   const f = db.setting('flip', { fixed: 68000, pct: 1.5 });
@@ -392,6 +398,14 @@ function bindTlPlan(c, el, S) {
     const r = M.applyTLRate(c, e);
     const msg = 'Kurs → ₺1 = Rp ' + e.toLocaleString('id-ID') + (r.delta ? ' · Buffer ' + fmtIDR(r.buffer) + ' (total dijaga tetap)' : '') + ' ✓';
     toast(msg); render(el, S);
+  };
+  // samakan pos TL ke kurs siklus (dari Catat), tanpa mengubah angka transfer
+  const sync = $('tlSyncSiklus');
+  if (sync) sync.onclick = () => {
+    if (!rate) return toast('Kurs siklus belum diisi — set di Catat dulu');
+    const r = M.applyTLRate(c, rate);
+    toast('Pos TL disamakan ke ₺1 = Rp ' + rate.toLocaleString('id-ID') + (r.delta ? ' · Buffer ' + fmtIDR(r.buffer) : '') + ' ✓');
+    render(el, S);
   };
 }
 
