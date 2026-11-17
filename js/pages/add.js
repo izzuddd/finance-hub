@@ -78,9 +78,15 @@ function rateCard(cycle) {
     <div><button class="btn small ghost" data-rate="${cycle}" data-rec="${rec.recommended}">ubah</button></div></div>`;
 }
 function editRate(cycle, rec) {
-  openModal({ title: 'Kurs TL — siklus ' + cycleLabel(cycle, true), sub: 'Semua transaksi TL di siklus ini dikonversi dengan kurs ini (seperti sel L1).',
+  openModal({ title: 'Kurs TL — siklus ' + cycleLabel(cycle, true), sub: 'Semua transaksi TL di siklus ini dikonversi dengan kurs ini (seperti sel L1). Ubah kurs → semua komponen TL di Budget ikut menyesuaikan otomatis.',
     fields: [{ k: 'rate', label: 'IDR per ₺1', type: 'number', value: M.rateFor(cycle) || '', note: rec ? 'Rekomendasi dari top-up: <b>' + rec + '</b>' : '' }],
-    onSave: (v) => { if (!v.rate) throw new Error('Isi kurs'); M.setRate(cycle, v.rate); toast('Kurs disimpan ✓'); } });
+    onSave: (v) => {
+      if (!v.rate) throw new Error('Isi kurs');
+      // setel kurs + revaluasi semua baris TL di Budget (idr = tl × kurs), total siklus dijaga lewat "Buffer kurs TL"
+      const res = M.applyTLRate(cycle, v.rate);
+      toast(res && res.delta ? 'Kurs disimpan ✓ Budget TL ikut berubah' : 'Kurs disimpan ✓');
+      try { window.__hub && window.__hub.refresh && window.__hub.refresh(); } catch (e) {}
+    } });
 }
 function bindForm(el, S) {
   const upd = () => {
