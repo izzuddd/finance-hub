@@ -374,7 +374,6 @@ function savingProjectionView() {
   const rows = M.cashflowProjection(st.sc, { career }).rows;
   let h = card('Kasus roadmap karir', `<div class="chips" style="margin:0 0 8px">${careers.map((c) => `<button data-cfcareer="${c.id}" class="${c.id === st.career ? 'active' : ''}">${esc(c.id === 'turki' ? 'Turki' : c.id.toUpperCase())}</button>`).join('')}</div>`
     + `<div class="note" style="margin:0"><b>${esc(career.title)}</b>${career.trans ? ` · mulai ${cycleLabel(career.trans, true)} · income ${fmtShort(career.income)}/bln${career.growth ? ' (+' + career.growth + '%/th)' : ''}${career.thr ? ' + THR ' + fmtShort(career.thr) : ''}${career.cost ? ' · biaya ' + fmtShort(career.cost) + '/bln' : ''}` : ''} <button class="refresh" id="cfCareerEdit">ubah angka</button><br>${esc(career.note)}</div>`);
-  h += scs.length > 1 ? `<div class="chips">${scs.map((s) => `<button data-cfsc="${s.id}" class="${s.id === st.sc ? 'active' : ''}">Kamar: ${esc(s.name)}</button>`).join('')}</div>` : '';
   const years = groupBy(rows, (r) => r.month.slice(0, 4));
   for (const [y, rs] of Object.entries(years)) {
     const body = `<div class="tbl"><div class="th"><span>Bln</span><span>Masuk</span><span>Needs</span><span>Wants</span><span>Giving</span><span>Sisa</span></div>` +
